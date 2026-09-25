@@ -1,10 +1,9 @@
 package com.frietsync.backend.user.controller;
 
+import com.frietsync.backend.user.dto.LoginRequest;
+import com.frietsync.backend.user.dto.SignupRequest;
+import com.frietsync.backend.user.dto.UserResponse;
 import com.frietsync.backend.user.service.AuthService;
-import com.frietsync.backend.user.dto.SignupRequest;
-import com.frietsync.backend.user.dto.UserResponse;
-import com.frietsync.backend.user.dto.SignupRequest;
-import com.frietsync.backend.user.dto.UserResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -25,5 +24,11 @@ public class AuthController {
     public ResponseEntity<UserResponse> signup(@Valid @RequestBody SignupRequest request) {
         UserResponse response = authService.signup(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<UserResponse> login(@Valid @RequestBody LoginRequest request) {
+        UserResponse response = authService.login(request);
+        return ResponseEntity.ok(response);
     }
 }

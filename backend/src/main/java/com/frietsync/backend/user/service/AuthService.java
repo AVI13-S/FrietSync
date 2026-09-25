@@ -1,9 +1,10 @@
 package com.frietsync.backend.user.service;
 
+import com.frietsync.backend.user.dto.LoginRequest;
 import com.frietsync.backend.user.dto.SignupRequest;
 import com.frietsync.backend.user.dto.UserResponse;
 
 public interface AuthService {
-
-    public UserResponse signup(SignupRequest request);
+    UserResponse signup(SignupRequest request);
+    UserResponse login(LoginRequest request);
 }
