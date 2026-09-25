@@ -1,4 +1,4 @@
-package com.frietsync.backend.auth.service;
+package com.frietsync.backend.user.service.impl;
 
 import com.frietsync.backend.common.exception.BadRequestException;
 import com.frietsync.backend.user.dto.SignupRequest;
@@ -9,7 +9,6 @@ import com.frietsync.backend.user.enums.Role;
 import com.frietsync.backend.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -32,6 +31,7 @@ public class AuthServiceImpl implements AuthService {
                 .email(request.getEmail())
                 .passwordHash(hashedPassword)
                 .active(true)
+                .role(Role.ADMIN)
                 .build();
 
         User savedUser = userRepository.save(user);
