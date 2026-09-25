@@ -1,4 +1,3 @@
-
 package com.frietsync.backend.user.entity;
 
 import com.frietsync.backend.common.entity.BaseEntity;
@@ -10,18 +9,17 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Getter;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
-import lombok.experimental.SuperBuilder;
 
-@Entity
-@Table(name = "users")
-@Getter
-@Setter
+@Data
+@EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
 @AllArgsConstructor
-@SuperBuilder
+@Builder
+@Entity
+@Table(name = "users")
 public class User extends BaseEntity {
 
     @Column(nullable = false)
@@ -41,4 +39,3 @@ public class User extends BaseEntity {
     @Column(nullable = false)
     private boolean active = true;
 }
-
