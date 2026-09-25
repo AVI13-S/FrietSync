@@ -1,6 +1,8 @@
-package com.frietsync.backend.auth.controller;
+package com.frietsync.backend.user.controller;
 
-import com.frietsync.backend.auth.service.AuthService;
+import com.frietsync.backend.user.service.AuthService;
+import com.frietsync.backend.user.dto.SignupRequest;
+import com.frietsync.backend.user.dto.UserResponse;
 import com.frietsync.backend.user.dto.SignupRequest;
 import com.frietsync.backend.user.dto.UserResponse;
 import jakarta.validation.Valid;
