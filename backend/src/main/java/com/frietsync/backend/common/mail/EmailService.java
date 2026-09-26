@@ -1,4 +1,6 @@
 package com.frietsync.backend.common.mail;
 
-public class EmailService {
+public interface EmailService {
+
+    void sendSimpleMail(EmailDetails details);
 }
