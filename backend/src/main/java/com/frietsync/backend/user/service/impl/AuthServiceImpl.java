@@ -1,6 +1,8 @@
 package com.frietsync.backend.user.service.impl;
 
 import com.frietsync.backend.common.exception.BadRequestException;
+import com.frietsync.backend.common.security.JwtUtil;
+import com.frietsync.backend.user.dto.AuthResponse;
 import com.frietsync.backend.user.dto.LoginRequest;
 import com.frietsync.backend.user.dto.SignupRequest;
 import com.frietsync.backend.user.dto.UserResponse;
@@ -18,6 +20,7 @@ public class AuthServiceImpl implements AuthService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final JwtUtil jwtUtil;
 
     public UserResponse signup(SignupRequest request) {
         if (userRepository.existsByEmail(request.getEmail())) {
@@ -39,7 +42,7 @@ public class AuthServiceImpl implements AuthService {
         return UserResponse.fromEntity(savedUser);
     }
 
-    public UserResponse login(LoginRequest request) {
+    public AuthResponse login(LoginRequest request) {
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new BadRequestException("Invalid email or password"));
 
@@ -47,6 +50,8 @@ public class AuthServiceImpl implements AuthService {
             throw new BadRequestException("Invalid email or password");
         }
 
-        return UserResponse.fromEntity(user);
+        String token = jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole().name());
+
+        return new AuthResponse(UserResponse.fromEntity(user), token);
     }
 }
