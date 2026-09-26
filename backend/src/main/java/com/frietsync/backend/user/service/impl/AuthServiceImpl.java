@@ -29,13 +29,12 @@ public class AuthServiceImpl implements AuthService {
 
         String hashedPassword = passwordEncoder.encode(request.getPassword());
 
-        User user = User.builder()
-                .name(request.getName())
-                .email(request.getEmail())
-                .passwordHash(hashedPassword)
-                .role(Role.ADMIN)
-                .active(true)
-                .build();
+        User user = new User();
+        user.setName(request.getName());
+        user.setEmail(request.getEmail());
+        user.setPasswordHash(hashedPassword);
+        user.setRole(Role.ADMIN);
+        user.setActive(true);
 
         User savedUser = userRepository.save(user);
 
