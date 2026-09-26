@@ -1,0 +1,25 @@
+name: Deploy FrietSync
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd ~/FrietSync
+            git pull origin main
+            cd backend
+            bash mvnw clean package -DskipTests
+            cp target/*.jar target/frietsync.jar
+            sudo systemctl restart frietsync
