@@ -1,5 +1,6 @@
 package com.frietsync.backend.user.controller;
 
+import com.frietsync.backend.user.dto.AuthResponse;
 import com.frietsync.backend.user.dto.LoginRequest;
 import com.frietsync.backend.user.dto.SignupRequest;
 import com.frietsync.backend.user.dto.UserResponse;
@@ -27,8 +28,8 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<UserResponse> login(@Valid @RequestBody LoginRequest request) {
-        UserResponse response = authService.login(request);
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+        AuthResponse response = authService.login(request);
         return ResponseEntity.ok(response);
     }
 }
