@@ -1,5 +1,5 @@
 
-package com.frietsync.backend.user.otp.service;
+package com.frietsync.backend.otp.service;
 
 import com.frietsync.backend.common.exception.BadRequestException;
 import com.frietsync.backend.common.mail.EmailServiceImpl;

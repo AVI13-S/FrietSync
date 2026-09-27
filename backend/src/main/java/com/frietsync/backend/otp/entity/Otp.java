@@ -1,4 +1,4 @@
-package com.frietsync.backend.user.otp.entity;
+package com.frietsync.backend.otp.entity;
 
 
 import com.frietsync.backend.common.entity.BaseEntity;

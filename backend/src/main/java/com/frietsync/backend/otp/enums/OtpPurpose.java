@@ -1,4 +1,4 @@
-package com.frietsync.backend.user.otp.enums;
+package com.frietsync.backend.otp.enums;
 
 public enum OtpPurpose {
     SIGNUP,

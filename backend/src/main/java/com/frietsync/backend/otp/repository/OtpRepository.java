@@ -1,5 +1,5 @@
 
-package com.frietsync.backend.user.otp.repository;
+package com.frietsync.backend.otp.repository;
 
 import com.frietsync.backend.otp.entity.Otp;
 import com.frietsync.backend.otp.enums.OtpPurpose;
