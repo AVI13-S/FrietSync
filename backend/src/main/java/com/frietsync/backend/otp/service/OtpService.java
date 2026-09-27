@@ -24,7 +24,8 @@ public class OtpService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     public void sendOtp(String email, OtpPurpose purpose) {
-        otpRepository.deleteByEmailAndPurpose(email, purpose);
+        List<Otp> existing = otpRepository.findByEmailAndPurpose(email, purpose);
+        otpRepository.deleteAll(existing);
         String code = String.valueOf((int) (Math.random() * 900000) + 100000);
 
         Otp otp = new Otp();
