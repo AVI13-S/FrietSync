@@ -10,9 +10,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -46,15 +45,15 @@ public class OtpService {
                 .findFirst()
                 .orElseThrow(() -> new BadRequestException("No OTP found for this email"));
 
-        if (Instant.now().isAfter(latestUnused.getExpiresAt())) {
+        if (Instant.now().isAfter(otp.getExpiresAt())) {
             throw new BadRequestException("OTP has expired");
         }
 
-        if (!latestUnused.getCode().equals(code)) {
+        if (!otp.getCode().equals(code)) {
             throw new BadRequestException("Invalid OTP");
         }
 
-        latestUnused.setUsed(true);
-        otpRepository.save(latestUnused);
+        otp.setUsed(true);
+        otpRepository.save(otp);
     }
 }
