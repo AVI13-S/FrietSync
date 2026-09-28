@@ -22,9 +22,17 @@ public class AuthServiceImpl implements AuthService {
     private final JwtUtil jwtUtil;
     private final OtpService otpService;
 
+    @Override
     public UserResponse signup(SignupRequest request) {
-        if (userRepository.existsByEmail(request.getEmail())) {
-            throw new BadRequestException("Email is already registered");
+        User existingUser = userRepository.findByEmail(request.getEmail()).orElse(null);
+
+        if (existingUser != null) {
+            if (existingUser.isActive()) {
+                throw new BadRequestException("Email is already registered");
+            }
+
+            otpService.sendOtp(existingUser.getEmail(), OtpPurpose.SIGNUP);
+            return UserResponse.fromEntity(existingUser);
         }
 
         String hashedPassword = passwordEncoder.encode(request.getPassword());
@@ -43,6 +51,7 @@ public class AuthServiceImpl implements AuthService {
         return UserResponse.fromEntity(savedUser);
     }
 
+    @Override
     public AuthResponse login(LoginRequest request) {
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new BadRequestException("Invalid email or password"));
@@ -51,8 +60,11 @@ public class AuthServiceImpl implements AuthService {
             throw new BadRequestException("Invalid email or password");
         }
 
-        String token = jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole().name());
+        if (!user.isActive()) {
+            throw new BadRequestException("Please verify your email before logging in");
+        }
 
+        String token = jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole().name());
         return new AuthResponse(UserResponse.fromEntity(user), token);
     }
 
@@ -64,6 +76,26 @@ public class AuthServiceImpl implements AuthService {
                 .orElseThrow(() -> new BadRequestException("User not found"));
 
         user.setActive(true);
+        userRepository.save(user);
+    }
+
+    @Override
+    public void forgotPassword(ForgotPasswordRequest request) {
+        if (!userRepository.existsByEmail(request.getEmail())) {
+            throw new BadRequestException("No account found with this email");
+        }
+
+        otpService.sendOtp(request.getEmail(), OtpPurpose.RESET_PASSWORD);
+    }
+
+    @Override
+    public void resetPassword(ResetPasswordRequest request) {
+        otpService.verifyOtp(request.getEmail(), request.getCode(), OtpPurpose.RESET_PASSWORD);
+
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new BadRequestException("User not found"));
+
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
     }
 }

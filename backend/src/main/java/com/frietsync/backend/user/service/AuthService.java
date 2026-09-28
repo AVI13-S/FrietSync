@@ -11,7 +11,7 @@ import com.frietsync.backend.user.dto.VerifyOtpRequest;
 public interface AuthService {
     UserResponse signup(SignupRequest request);
     AuthResponse login(LoginRequest request);
+    void verifySignupOtp(VerifyOtpRequest request);
     void forgotPassword(ForgotPasswordRequest request);
-    void verifyResetOtp(VerifyOtpRequest request);
     void resetPassword(ResetPasswordRequest request);
 }

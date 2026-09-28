@@ -24,7 +24,9 @@ public class OtpService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     public void sendOtp(String email, OtpPurpose purpose) {
-        String code = String.valueOf((int) (Math.random() * 900000) + 100000);
+        List<Otp> existing = otpRepository.findByEmailAndPurpose(email, purpose);
+        otpRepository.deleteAll(existing);
+        String code = String.format("%06d", RANDOM.nextInt(1_000_000));
 
         Otp otp = new Otp();
         otp.setEmail(email);
@@ -40,10 +42,11 @@ public class OtpService {
     public void verifyOtp(String email, String code, OtpPurpose purpose) {
         List<Otp> otps = otpRepository.findByEmailAndPurpose(email, purpose);
 
-        Otp otp = otps.stream()
-                .filter(o -> !o.isUsed())
-                .findFirst()
-                .orElseThrow(() -> new BadRequestException("No OTP found for this email"));
+        if (otps.isEmpty()) {
+            throw new BadRequestException("No OTP found for this email");
+        }
+
+        Otp otp = otps.get(0);
 
         if (Instant.now().isAfter(otp.getExpiresAt())) {
             throw new BadRequestException("OTP has expired");
