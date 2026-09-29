@@ -21,5 +21,5 @@ jobs:
             git pull origin main
             cd backend
             bash mvnw clean package -DskipTests
-            cp target/*.jar target/frietsync.jar
             sudo systemctl restart frietsync
+            sudo systemctl is-active --quiet frietsync
