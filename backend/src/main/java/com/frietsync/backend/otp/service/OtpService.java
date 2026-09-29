@@ -26,7 +26,7 @@ public class OtpService {
     public void sendOtp(String email, OtpPurpose purpose) {
         List<Otp> existing = otpRepository.findByEmailAndPurpose(email, purpose);
         otpRepository.deleteAll(existing);
-        String code = String.valueOf((int) (Math.random() * 900000) + 100000);
+        String code = String.format("%06d", RANDOM.nextInt(1_000_000));
 
         Otp otp = new Otp();
         otp.setEmail(email);

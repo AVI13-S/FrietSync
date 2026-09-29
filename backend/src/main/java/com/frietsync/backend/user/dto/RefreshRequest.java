@@ -1,13 +1,12 @@
 package com.frietsync.backend.user.dto;
 
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 @Data
-public class ForgotPasswordRequest {
+public class RefreshRequest {
 
     @NotBlank
-    @Email
-    private String email;
+    private String refreshToken;
 }
+

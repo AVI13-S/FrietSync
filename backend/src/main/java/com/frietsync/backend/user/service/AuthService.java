@@ -8,4 +8,6 @@ public interface AuthService {
     void verifySignupOtp(VerifyOtpRequest request);
     void forgotPassword(ForgotPasswordRequest request);
     void resetPassword(ResetPasswordRequest request);
+    String refreshAccessToken(RefreshRequest request);
+    void logout(RefreshRequest request);
 }

@@ -20,11 +20,21 @@ public class EmailServiceImpl implements EmailService {
         javaMailSender.send(mailMessage);
     }
 
+
     public void sendOtpMail(String recipient, String otp) {
         EmailDetails details = new EmailDetails();
         details.setRecipient(recipient);
         details.setSubject("Your FrietSync verification code");
         details.setMsgBody("Your OTP is: " + otp + "\nThis code expires in 10 minutes.");
+        sendSimpleMail(details);
+    }
+
+
+    public void sendInviteMail(String recipient, String role) {
+        EmailDetails details = new EmailDetails();
+        details.setRecipient(recipient);
+        details.setSubject("You're invited to FrietSync");
+        details.setMsgBody("You have been invited to join FrietSync as a " + role + ".");
         sendSimpleMail(details);
     }
 }

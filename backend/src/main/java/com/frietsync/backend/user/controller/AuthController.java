@@ -49,4 +49,15 @@ public class AuthController {
         authService.resetPassword(request);
         return ResponseEntity.ok(Map.of("message", "Password reset successfully"));
     }
+    @PostMapping("/refresh")
+    public ResponseEntity<Map<String, String>> refresh(@Valid @RequestBody RefreshRequest request) {
+        String accessToken = authService.refreshAccessToken(request);
+        return ResponseEntity.ok(Map.of("accessToken", accessToken));
+    }
+    @PostMapping("/logout")
+    public ResponseEntity<Map<String, String>> logout(@Valid @RequestBody RefreshRequest request) {
+        authService.logout(request);
+        return ResponseEntity.ok(Map.of("message", "Logged out successfully"));
+    }
+
 }
