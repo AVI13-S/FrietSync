@@ -14,9 +14,11 @@ import com.frietsync.backend.user.service.AuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 
 
 @Service
@@ -48,7 +50,7 @@ public class AuthServiceImpl implements AuthService {
         user.setName(request.getName());
         user.setEmail(request.getEmail());
         user.setPasswordHash(hashedPassword);
-        user.setRole(Role.ADMIN);
+        user.setRole(Role.CONTRIBUTOR);
         user.setActive(false);
 
         User savedUser = userRepository.save(user);
@@ -103,6 +105,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @Transactional
     public void resetPassword(ResetPasswordRequest request) {
         otpService.verifyOtp(request.getEmail(), request.getCode(), OtpPurpose.RESET_PASSWORD);
 
@@ -111,20 +114,35 @@ public class AuthServiceImpl implements AuthService {
 
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
+
+        List<RefreshToken> activeTokens = refreshTokenRepository.findAllByUserIdAndRevokedFalse(user.getId());
+        activeTokens.forEach(token -> token.setRevoked(true));
+        refreshTokenRepository.saveAll(activeTokens);
     }
     @Override
-    public String refreshAccessToken(RefreshRequest request) {
-        RefreshToken refreshToken = refreshTokenRepository.findByToken(request.getRefreshToken())
+    public AuthResponse refreshAccessToken(RefreshRequest request) {
+        RefreshToken oldToken = refreshTokenRepository.findByToken(request.getRefreshToken())
                 .orElseThrow(() -> new BadRequestException("Invalid refresh token"));
 
-        if (refreshToken.isRevoked() || Instant.now().isAfter(refreshToken.getExpiresAt())) {
+        if (oldToken.isRevoked() || Instant.now().isAfter(oldToken.getExpiresAt())) {
             throw new BadRequestException("Refresh token expired or revoked");
         }
 
-        User user = userRepository.findById(refreshToken.getUserId())
+        oldToken.setRevoked(true);
+        refreshTokenRepository.save(oldToken);
+
+        User user = userRepository.findById(oldToken.getUserId())
                 .orElseThrow(() -> new BadRequestException("User not found"));
 
-        return jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole().name());
+        String accessToken = jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole().name());
+
+        RefreshToken newToken = new RefreshToken();
+        newToken.setUserId(user.getId());
+        newToken.setToken(jwtUtil.generateRefreshToken());
+        newToken.setExpiresAt(Instant.now().plus(Duration.ofDays(7)));
+        refreshTokenRepository.save(newToken);
+
+        return new AuthResponse(UserResponse.fromEntity(user), accessToken, newToken.getToken());
     }
     @Override
     public void logout(RefreshRequest request) {
