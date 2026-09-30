@@ -5,13 +5,19 @@ import com.frietsync.backend.common.security.JwtUtil;
 import com.frietsync.backend.otp.enums.OtpPurpose;
 import com.frietsync.backend.otp.service.OtpService;
 import com.frietsync.backend.user.dto.*;
+import com.frietsync.backend.user.entity.RefreshToken;
 import com.frietsync.backend.user.entity.User;
 import com.frietsync.backend.user.enums.Role;
+import com.frietsync.backend.user.repository.RefreshTokenRepository;
 import com.frietsync.backend.user.repository.UserRepository;
 import com.frietsync.backend.user.service.AuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+
+import java.time.Duration;
+import java.time.Instant;
+
 
 @Service
 @RequiredArgsConstructor
@@ -21,6 +27,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final OtpService otpService;
+    private final RefreshTokenRepository refreshTokenRepository;
 
     @Override
     public UserResponse signup(SignupRequest request) {
@@ -64,8 +71,15 @@ public class AuthServiceImpl implements AuthService {
             throw new BadRequestException("Please verify your email before logging in");
         }
 
-        String token = jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole().name());
-        return new AuthResponse(UserResponse.fromEntity(user), token);
+        String accessToken = jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole().name());
+
+        RefreshToken refreshToken = new RefreshToken();
+        refreshToken.setUserId(user.getId());
+        refreshToken.setToken(jwtUtil.generateRefreshToken());
+        refreshToken.setExpiresAt(Instant.now().plus(Duration.ofDays(7)));
+        refreshTokenRepository.save(refreshToken);
+
+        return new AuthResponse(UserResponse.fromEntity(user), accessToken, refreshToken.getToken());
     }
 
     @Override
@@ -97,5 +111,27 @@ public class AuthServiceImpl implements AuthService {
 
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
+    }
+    @Override
+    public String refreshAccessToken(RefreshRequest request) {
+        RefreshToken refreshToken = refreshTokenRepository.findByToken(request.getRefreshToken())
+                .orElseThrow(() -> new BadRequestException("Invalid refresh token"));
+
+        if (refreshToken.isRevoked() || Instant.now().isAfter(refreshToken.getExpiresAt())) {
+            throw new BadRequestException("Refresh token expired or revoked");
+        }
+
+        User user = userRepository.findById(refreshToken.getUserId())
+                .orElseThrow(() -> new BadRequestException("User not found"));
+
+        return jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole().name());
+    }
+    @Override
+    public void logout(RefreshRequest request) {
+        RefreshToken refreshToken = refreshTokenRepository.findByToken(request.getRefreshToken())
+                .orElseThrow(() -> new BadRequestException("Invalid refresh token"));
+
+        refreshToken.setRevoked(true);
+        refreshTokenRepository.save(refreshToken);
     }
 }
