@@ -20,7 +20,7 @@ public class EmailServiceImpl implements EmailService {
         javaMailSender.send(mailMessage);
     }
 
-
+    @Override
     public void sendOtpMail(String recipient, String otp) {
         EmailDetails details = new EmailDetails();
         details.setRecipient(recipient);
@@ -29,7 +29,7 @@ public class EmailServiceImpl implements EmailService {
         sendSimpleMail(details);
     }
 
-
+    @Override
     public void sendInviteMail(String recipient, String role) {
         EmailDetails details = new EmailDetails();
         details.setRecipient(recipient);

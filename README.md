@@ -43,6 +43,24 @@ All of these start with `/api/auth`.
 
 There is also `GET /api/check`. It only returns `{"status": "ok"}` so we can see that the server is running.
 
+## Invites
+
+When creating an invite, the admin must provide a role (`PROJECT_MANAGER`, `TEAM_LEAD`, `CONTRIBUTOR`, or `REPORTER`) and `expiresAt` as an ISO-8601 UTC timestamp (for example, `2030-05-01T12:00:00Z`). The expiration must be in the future. `ADMIN` is not an assignable invite role. The admin-selected expiration is used for new invites; the 7-day duration only applies to legacy invites that have no expiration value.
+
+Example create request body:
+
+```json
+{
+  "email": "collaborator@example.com",
+  "role": "PROJECT_MANAGER",
+  "expiresAt": "2030-05-01T12:00:00Z"
+}
+```
+
+The seven-day period below applies only to legacy invites; new invites use the admin-selected expiration date.
+
+Admin-created contributor invites expire 7 days after creation. Authenticated users can view their pending invites with `GET /api/invites/me`, accept with `POST /api/invites/accept`, or reject with `POST /api/invites/reject`. Accept, reject, and revoke use `{"inviteId": "<invite UUID>"}`. An admin can revoke a pending invite with `POST /api/admin/invites/revoke`, using an admin access token as a Bearer token. Routes under `/api/admin/**` require the `ADMIN` role. Invite responses include `createdAt`, `acceptedAt` (null until accepted), and `expiresAt`; expired invites are marked `EXPIRED` when the recipient loads their pending invites.
+
 ### Signup
 
 ```
@@ -111,4 +129,3 @@ About the OTP:
 - it is saved in the database with a purpose, SIGNUP or RESET_PASSWORD, so an OTP for one purpose cannot be used for the other
 - if a new OTP is sent, the old one for that email is deleted
 - after the password is changed, the OTP is marked as used
-

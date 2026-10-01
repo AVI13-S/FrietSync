@@ -4,6 +4,7 @@ import com.frietsync.backend.invite.enums.InviteStatus;
 import com.frietsync.backend.user.enums.Role;
 import lombok.Data;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Data
@@ -12,4 +13,7 @@ public class InviteResponse {
     private String email;
     private Role role;
     private InviteStatus status;
+    private Instant createdAt;
+    private Instant acceptedAt;
+    private Instant expiresAt;
 }
