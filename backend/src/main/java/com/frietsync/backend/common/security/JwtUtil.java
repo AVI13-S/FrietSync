@@ -26,7 +26,7 @@ public class JwtUtil {
         return UUID.randomUUID().toString();
     }
 
-    public String generateToken(UUID userId, String email, String role) {
+    public String generateToken(UUID userId, String email, String role, int passwordVersion) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + expirationMs);
 
@@ -34,6 +34,7 @@ public class JwtUtil {
                 .subject(userId.toString())
                 .claim("email", email)
                 .claim("role", role)
+                .claim("passwordVersion", passwordVersion)
                 .issuedAt(now)
                 .expiration(expiry)
                 .signWith(secretKey)

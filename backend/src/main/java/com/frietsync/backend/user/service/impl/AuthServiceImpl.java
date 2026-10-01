@@ -4,10 +4,8 @@ import com.frietsync.backend.common.exception.BadRequestException;
 import com.frietsync.backend.common.security.JwtUtil;
 import com.frietsync.backend.otp.enums.OtpPurpose;
 import com.frietsync.backend.user.dto.*;
-import com.frietsync.backend.user.entity.RefreshToken;
 import com.frietsync.backend.user.entity.User;
 import com.frietsync.backend.user.enums.Role;
-import com.frietsync.backend.user.repository.RefreshTokenRepository;
 import com.frietsync.backend.user.repository.UserRepository;
 import com.frietsync.backend.user.service.AuthService;
 import lombok.RequiredArgsConstructor;
@@ -17,11 +15,6 @@ import org.springframework.transaction.annotation.Transactional;
 import com.frietsync.backend.otp.service.OtpService;
 import com.frietsync.backend.user.service.RefreshTokenService;
 import java.util.UUID;
-
-import java.time.Duration;
-import java.time.Instant;
-import java.util.List;
-
 
 @Service
 @RequiredArgsConstructor
@@ -75,7 +68,8 @@ public class AuthServiceImpl implements AuthService {
             throw new BadRequestException("Please verify your email before logging in");
         }
 
-        String accessToken = jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole().name());
+        String accessToken = jwtUtil.generateToken(
+                user.getId(), user.getEmail(), user.getRole().name(), user.getPasswordVersion());
 
         String refreshToken = jwtUtil.generateRefreshToken();
         refreshTokenService.save(refreshToken, user.getId());
@@ -112,6 +106,7 @@ public class AuthServiceImpl implements AuthService {
                 .orElseThrow(() -> new BadRequestException("User not found"));
 
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        user.setPasswordVersion(user.getPasswordVersion() + 1);
         userRepository.save(user);
 
         refreshTokenService.deleteAllForUser(user.getId());
@@ -130,7 +125,8 @@ public class AuthServiceImpl implements AuthService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BadRequestException("User not found"));
 
-        String accessToken = jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole().name());
+        String accessToken = jwtUtil.generateToken(
+                user.getId(), user.getEmail(), user.getRole().name(), user.getPasswordVersion());
 
         String newRefreshToken = jwtUtil.generateRefreshToken();
         refreshTokenService.save(newRefreshToken, user.getId());

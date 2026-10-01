@@ -28,13 +28,13 @@ public class RateLimitInterceptor implements HandlerInterceptor {
 
         int limit = 10;
 
-        if (path.equals("/api/auth/signup") || path.equals("/api/auth/forgot-password")) {
+        if (path.equals("/api/v1/auth/signup") || path.equals("/api/v1/auth/forgot-password")) {
             limit = 10;
-        } else if (path.equals("/api/auth/login")) {
+        } else if (path.equals("/api/v1/auth/login")) {
             limit = 10;
-        } else if (path.equals("/api/auth/refresh")) {
+        } else if (path.equals("/api/v1/auth/refresh")) {
             limit = 15;
-        } else if (path.equals("/api/auth/logout")) {
+        } else if (path.equals("/api/v1/auth/logout")) {
             limit = 10;
         }
 

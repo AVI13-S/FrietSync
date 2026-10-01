@@ -8,7 +8,7 @@ import java.util.Map;
 @RestController
 public class CheckController {
 
-    @GetMapping("/api/check")
+    @GetMapping("/api/v1/check")
     public Map<String, String> check() {
         return Map.of("status", "ok");
     }

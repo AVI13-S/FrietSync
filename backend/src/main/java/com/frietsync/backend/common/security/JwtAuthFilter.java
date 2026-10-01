@@ -1,12 +1,15 @@
 
 package com.frietsync.backend.common.security;
 
+import com.frietsync.backend.user.entity.User;
+import com.frietsync.backend.user.repository.UserRepository;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -22,14 +25,17 @@ import java.util.UUID;
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
+    private final UserRepository userRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
-                                    HttpServletResponse response,
-                                    FilterChain filterChain) throws ServletException, IOException {
+                                    @NonNull HttpServletResponse response,
+                                    @NonNull FilterChain filterChain)
+            throws ServletException, IOException {
+
 
         String path = request.getRequestURI();
-        if (path.startsWith("/api/auth/") || path.equals("/api/check")) {
+        if (path.startsWith("/api/v1/auth/") || path.equals("/api/v1/check")) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -43,7 +49,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String token = header.substring(7);
         Claims claims = jwtUtil.validateAndParse(token);
         UUID userId = UUID.fromString(claims.getSubject());
+        Integer tokenPasswordVersion = claims.get("passwordVersion", Integer.class);
         String role = claims.get("role", String.class);
+
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null || tokenPasswordVersion == null
+                || !tokenPasswordVersion.equals(user.getPasswordVersion())) {
+            filterChain.doFilter(request, response);
+            return;
+        }
 
         SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + role);
         UsernamePasswordAuthenticationToken authentication =
