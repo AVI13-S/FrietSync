@@ -1,6 +1,7 @@
 
 package com.frietsync.backend.common.security;
 
+import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -40,8 +41,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         }
 
         String token = header.substring(7);
-        UUID userId = jwtUtil.extractUserId(token);
-        String role = jwtUtil.extractRole(token);
+        Claims claims = jwtUtil.validateAndParse(token);
+        UUID userId = UUID.fromString(claims.getSubject());
+        String role = claims.get("role", String.class);
 
         SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + role);
         UsernamePasswordAuthenticationToken authentication =
@@ -51,4 +53,3 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 }
-

@@ -12,6 +12,7 @@ import com.frietsync.backend.user.entity.User;
 import com.frietsync.backend.user.enums.Role;
 import com.frietsync.backend.user.repository.UserRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +34,7 @@ public class InviteServiceImpl implements InviteService {
     }
 
     @Override
+    @Transactional
     public InviteResponse createInvite(InviteRequest request, UUID adminId) {
         if (request.getEmail() == null || request.getEmail().isBlank()) {
             throw new BadRequestException("Email is required");
@@ -84,6 +86,7 @@ public class InviteServiceImpl implements InviteService {
     }
 
     @Override
+    @Transactional
     public InviteResponse acceptInvite(UUID userId, UUID inviteId) {
         if (inviteId == null) {
             throw new BadRequestException("inviteId is required");
