@@ -2,7 +2,7 @@
 package com.frietsync.backend.otp.service;
 
 import com.frietsync.backend.common.exception.BadRequestException;
-import com.frietsync.backend.common.mail.EmailServiceImpl;
+import com.frietsync.backend.common.mail.EmailService;
 import com.frietsync.backend.otp.entity.Otp;
 import com.frietsync.backend.otp.enums.OtpPurpose;
 import com.frietsync.backend.otp.repository.OtpRepository;
@@ -19,7 +19,7 @@ import java.util.List;
 public class OtpService {
 
     private final OtpRepository otpRepository;
-    private final EmailServiceImpl emailService;
+    private final EmailService emailService;
 
     private static final SecureRandom RANDOM = new SecureRandom();
 

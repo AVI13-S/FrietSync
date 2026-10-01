@@ -14,12 +14,16 @@ import com.frietsync.backend.user.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 @Service
 public class InviteServiceImpl implements InviteService {
+
+    private static final Duration INVITE_VALIDITY = Duration.ofDays(7);
 
     private final InviteRepository inviteRepository;
     private final UserRepository userRepository;
@@ -39,6 +43,13 @@ public class InviteServiceImpl implements InviteService {
         if (request.getEmail() == null || request.getEmail().isBlank()) {
             throw new BadRequestException("Email is required");
         }
+        Instant now = Instant.now();
+        if (request.getExpiresAt() == null || !request.getExpiresAt().isAfter(now)) {
+            throw new BadRequestException("Invite expiration time must be in the future");
+        }
+        if (request.getRole() == null || request.getRole() == Role.ADMIN) {
+            throw new BadRequestException("Invite role must be PROJECT_MANAGER, TEAM_LEAD, CONTRIBUTOR, or REPORTER");
+        }
         String email = request.getEmail().trim().toLowerCase();
 
         User admin = userRepository.findById(adminId)
@@ -46,9 +57,10 @@ public class InviteServiceImpl implements InviteService {
 
         Invite invite = new Invite();
         invite.setEmail(email);
-        invite.setRole(Role.CONTRIBUTOR);
+        invite.setRole(request.getRole());
         invite.setStatus(InviteStatus.PENDING);
         invite.setInvitedBy(admin.getId());
+        invite.setExpiresAt(request.getExpiresAt());
         inviteRepository.save(invite);
 
         emailService.sendInviteMail(email, invite.getRole().name());
@@ -57,6 +69,7 @@ public class InviteServiceImpl implements InviteService {
     }
 
     @Override
+    @Transactional
     public List<InviteResponse> myPendingInvites(UUID userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BadRequestException("User not found"));
@@ -68,9 +81,18 @@ public class InviteServiceImpl implements InviteService {
                 );
 
         List<InviteResponse> responses = new ArrayList<>();
+        List<Invite> expiredInvites = new ArrayList<>();
 
         for (Invite invite : invites) {
-            responses.add(toResponse(invite));
+            if (isExpired(invite, Instant.now())) {
+                invite.setStatus(InviteStatus.EXPIRED);
+                expiredInvites.add(invite);
+            } else {
+                responses.add(toResponse(invite));
+            }
+        }
+        if (!expiredInvites.isEmpty()) {
+            inviteRepository.saveAll(expiredInvites);
         }
 
         return responses;
@@ -82,6 +104,9 @@ public class InviteServiceImpl implements InviteService {
         r.setEmail(i.getEmail());
         r.setRole(i.getRole());
         r.setStatus(i.getStatus());
+        r.setCreatedAt(i.getCreatedAt());
+        r.setAcceptedAt(i.getAcceptedAt());
+        r.setExpiresAt(getExpirationTime(i));
         return r;
     }
 
@@ -104,13 +129,74 @@ public class InviteServiceImpl implements InviteService {
         if (invite.getStatus() != InviteStatus.PENDING) {
             throw new BadRequestException("This invite is no longer pending");
         }
+        if (isExpired(invite, Instant.now())) {
+            throw new BadRequestException("This invite has expired");
+        }
 
         user.setRole(invite.getRole());
         userRepository.save(user);
 
         invite.setStatus(InviteStatus.ACCEPTED);
+        invite.setAcceptedAt(Instant.now());
         inviteRepository.save(invite);
 
         return toResponse(invite);
+    }
+
+    @Override
+    @Transactional
+    public InviteResponse rejectInvite(UUID userId, UUID inviteId) {
+        if (inviteId == null) {
+            throw new BadRequestException("inviteId is required");
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BadRequestException("User not found"));
+        Invite invite = inviteRepository.findById(inviteId)
+                .orElseThrow(() -> new BadRequestException("Invite not found"));
+
+        if (!invite.getEmail().equalsIgnoreCase(user.getEmail())) {
+            throw new BadRequestException("This invite does not belong to your account");
+        }
+        ensurePendingAndNotExpired(invite);
+
+        invite.setStatus(InviteStatus.REJECTED);
+        inviteRepository.save(invite);
+        return toResponse(invite);
+    }
+
+    @Override
+    @Transactional
+    public InviteResponse revokeInvite(UUID inviteId) {
+        if (inviteId == null) {
+            throw new BadRequestException("inviteId is required");
+        }
+
+        Invite invite = inviteRepository.findById(inviteId)
+                .orElseThrow(() -> new BadRequestException("Invite not found"));
+        ensurePendingAndNotExpired(invite);
+
+        invite.setStatus(InviteStatus.REVOKED);
+        inviteRepository.save(invite);
+        return toResponse(invite);
+    }
+
+    private void ensurePendingAndNotExpired(Invite invite) {
+        if (invite.getStatus() != InviteStatus.PENDING) {
+            throw new BadRequestException("This invite is no longer pending");
+        }
+        if (isExpired(invite, Instant.now())) {
+            throw new BadRequestException("This invite has expired");
+        }
+    }
+
+    private boolean isExpired(Invite invite, Instant now) {
+        return !now.isBefore(getExpirationTime(invite));
+    }
+
+    private Instant getExpirationTime(Invite invite) {
+        return invite.getExpiresAt() != null
+                ? invite.getExpiresAt()
+                : invite.getCreatedAt().plus(INVITE_VALIDITY);
     }
 }

@@ -7,6 +7,7 @@ import jakarta.persistence.*;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Data
@@ -30,4 +31,10 @@ public class Invite extends BaseEntity {
 
     @Column(name = "invited_by", nullable = false)
     private UUID invitedBy;
+
+    @Column(name = "expires_at", nullable = false)
+    private Instant expiresAt;
+
+    @Column(name = "accepted_at", nullable = true)
+    private Instant acceptedAt;
 }

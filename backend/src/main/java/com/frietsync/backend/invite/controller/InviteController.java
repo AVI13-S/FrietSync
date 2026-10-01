@@ -41,4 +41,16 @@ public class InviteController {
         UUID userId = UUID.fromString(authentication.getName());
         return ResponseEntity.ok(inviteService.acceptInvite(userId, request.getInviteId()));
     }
+
+    @PostMapping("/api/invites/reject")
+    public ResponseEntity<InviteResponse> reject(@Valid @RequestBody InviteRequest request,
+                                                 Authentication authentication) {
+        UUID userId = UUID.fromString(authentication.getName());
+        return ResponseEntity.ok(inviteService.rejectInvite(userId, request.getInviteId()));
+    }
+
+    @PostMapping("/api/admin/invites/revoke")
+    public ResponseEntity<InviteResponse> revoke(@Valid @RequestBody InviteRequest request) {
+        return ResponseEntity.ok(inviteService.revokeInvite(request.getInviteId()));
+    }
 }
