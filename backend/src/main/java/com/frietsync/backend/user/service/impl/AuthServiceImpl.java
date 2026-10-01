@@ -3,7 +3,6 @@ package com.frietsync.backend.user.service.impl;
 import com.frietsync.backend.common.exception.BadRequestException;
 import com.frietsync.backend.common.security.JwtUtil;
 import com.frietsync.backend.otp.enums.OtpPurpose;
-import com.frietsync.backend.otp.service.OtpService;
 import com.frietsync.backend.user.dto.*;
 import com.frietsync.backend.user.entity.RefreshToken;
 import com.frietsync.backend.user.entity.User;
@@ -15,6 +14,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.frietsync.backend.otp.service.OtpService;
+import com.frietsync.backend.user.service.RefreshTokenService;
+import java.util.UUID;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -29,7 +31,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final OtpService otpService;
-    private final RefreshTokenRepository refreshTokenRepository;
+    private final RefreshTokenService refreshTokenService;
 
     @Override
     public UserResponse signup(SignupRequest request) {
@@ -75,13 +77,10 @@ public class AuthServiceImpl implements AuthService {
 
         String accessToken = jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole().name());
 
-        RefreshToken refreshToken = new RefreshToken();
-        refreshToken.setUserId(user.getId());
-        refreshToken.setToken(jwtUtil.generateRefreshToken());
-        refreshToken.setExpiresAt(Instant.now().plus(Duration.ofDays(7)));
-        refreshTokenRepository.save(refreshToken);
+        String refreshToken = jwtUtil.generateRefreshToken();
+        refreshTokenService.save(refreshToken, user.getId());
 
-        return new AuthResponse(UserResponse.fromEntity(user), accessToken, refreshToken.getToken());
+        return new AuthResponse(UserResponse.fromEntity(user), accessToken, refreshToken);
     }
 
     @Override
@@ -115,41 +114,38 @@ public class AuthServiceImpl implements AuthService {
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
 
-        List<RefreshToken> activeTokens = refreshTokenRepository.findAllByUserIdAndRevokedFalse(user.getId());
-        activeTokens.forEach(token -> token.setRevoked(true));
-        refreshTokenRepository.saveAll(activeTokens);
+        refreshTokenService.deleteAllForUser(user.getId());
     }
+
     @Override
     public AuthResponse refreshAccessToken(RefreshRequest request) {
-        RefreshToken oldToken = refreshTokenRepository.findByToken(request.getRefreshToken())
-                .orElseThrow(() -> new BadRequestException("Invalid refresh token"));
+        UUID userId = refreshTokenService.getUserId(request.getRefreshToken());
 
-        if (oldToken.isRevoked() || Instant.now().isAfter(oldToken.getExpiresAt())) {
+        if (userId == null) {
             throw new BadRequestException("Refresh token expired or revoked");
         }
 
-        oldToken.setRevoked(true);
-        refreshTokenRepository.save(oldToken);
+        refreshTokenService.delete(request.getRefreshToken());
 
-        User user = userRepository.findById(oldToken.getUserId())
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BadRequestException("User not found"));
 
         String accessToken = jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole().name());
 
-        RefreshToken newToken = new RefreshToken();
-        newToken.setUserId(user.getId());
-        newToken.setToken(jwtUtil.generateRefreshToken());
-        newToken.setExpiresAt(Instant.now().plus(Duration.ofDays(7)));
-        refreshTokenRepository.save(newToken);
+        String newRefreshToken = jwtUtil.generateRefreshToken();
+        refreshTokenService.save(newRefreshToken, user.getId());
 
-        return new AuthResponse(UserResponse.fromEntity(user), accessToken, newToken.getToken());
+        return new AuthResponse(UserResponse.fromEntity(user), accessToken, newRefreshToken);
     }
+
     @Override
     public void logout(RefreshRequest request) {
-        RefreshToken refreshToken = refreshTokenRepository.findByToken(request.getRefreshToken())
-                .orElseThrow(() -> new BadRequestException("Invalid refresh token"));
+        UUID userId = refreshTokenService.getUserId(request.getRefreshToken());
 
-        refreshToken.setRevoked(true);
-        refreshTokenRepository.save(refreshToken);
+        if (userId == null) {
+            throw new BadRequestException("Invalid refresh token");
+        }
+
+        refreshTokenService.delete(request.getRefreshToken());
     }
 }
