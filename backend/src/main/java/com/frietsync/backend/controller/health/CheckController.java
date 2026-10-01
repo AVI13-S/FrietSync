@@ -1,0 +1,15 @@
+package com.frietsync.backend.controller.health;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
+
+@RestController
+public class CheckController {
+
+    @GetMapping("/api/v1/check")
+    public Map<String, String> check() {
+        return Map.of("status", "ok");
+    }
+}

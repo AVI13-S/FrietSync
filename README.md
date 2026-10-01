@@ -31,22 +31,44 @@ This is the authentication part of our FrietSync backend. It has signup, login, 
 
 ## APIs
 
-All of these start with `/api/auth`.
+All API routes use the `/api/v1` prefix.
 
 | Method | URL | Body |
 |---|---|---|
-| POST | /api/auth/signup | name, email, password |
-| POST | /api/auth/login | email, password |
-| POST | /api/auth/forgot-password | email |
-| POST | /api/auth/verify-reset-otp | email, code |
-| POST | /api/auth/reset-password | email, code, newPassword |
+| POST | /api/v1/auth/signup | name, email, password |
+| POST | /api/v1/auth/login | email, password |
+| POST | /api/v1/auth/verify-otp | email, code |
+| POST | /api/v1/auth/forgot-password | email |
+| POST | /api/v1/auth/reset-password | email, code, newPassword |
+| POST | /api/v1/auth/refresh | refreshToken |
+| POST | /api/v1/auth/logout | refreshToken |
 
-There is also `GET /api/check`. It only returns `{"status": "ok"}` so we can see that the server is running.
+`GET /api/v1/check` returns `{"status": "ok"}` to indicate that the server is running.
+
+## Invites
+
+Create invites with `POST /api/v1/admin/invites`.
+
+When creating an invite, the admin must provide a role (`PROJECT_MANAGER`, `TEAM_LEAD`, `CONTRIBUTOR`, or `REPORTER`) and `expiresAt` as an ISO-8601 UTC timestamp (for example, `2030-05-01T12:00:00Z`). The expiration must be in the future. `ADMIN` is not an assignable invite role. The admin-selected expiration is used for new invites; the 7-day duration only applies to legacy invites that have no expiration value.
+
+Example create request body:
+
+```json
+{
+  "email": "collaborator@example.com",
+  "role": "PROJECT_MANAGER",
+  "expiresAt": "2030-05-01T12:00:00Z"
+}
+```
+
+The seven-day period below applies only to legacy invites; new invites use the admin-selected expiration date.
+
+Admin-created contributor invites expire 7 days after creation. Authenticated users can view their pending invites with `GET /api/v1/invites/me`, accept with `POST /api/v1/invites/accept`, or reject with `POST /api/v1/invites/reject`. Accept, reject, and revoke use `{"inviteId": "<invite UUID>"}`. An admin can revoke a pending invite with `POST /api/v1/admin/invites/revoke`, using an admin access token as a Bearer token. Routes under `/api/v1/admin/**` require the `ADMIN` role. Invite responses include `createdAt`, `acceptedAt` (null until accepted), and `expiresAt`; expired invites are marked `EXPIRED` when the recipient loads their pending invites.
 
 ### Signup
 
 ```
-POST /api/auth/signup
+POST /api/v1/auth/signup
 
 {
   "name": "Test User",
@@ -60,7 +82,7 @@ The password should be between 6 and 20 characters. If the email is already used
 ### Login
 
 ```
-POST /api/auth/login
+POST /api/v1/auth/login
 
 {
   "email": "test@example.com",
@@ -91,8 +113,8 @@ Authorization: Bearer <token>
 
 Who can open what:
 
-- `/api/auth/**` and `/api/check` can be opened by anyone, because the user has no token when they sign up or log in
-- `/api/admin/**` is only for users with the ADMIN role
+- `/api/v1/auth/**` and `/api/v1/check` can be opened by anyone, because the user has no token when they sign up or log in
+- `/api/v1/admin/**` is only for users with the ADMIN role
 - every other URL needs a valid token
 
 The token is valid for 24 hours. After that the user has to log in again.
@@ -111,4 +133,3 @@ About the OTP:
 - it is saved in the database with a purpose, SIGNUP or RESET_PASSWORD, so an OTP for one purpose cannot be used for the other
 - if a new OTP is sent, the old one for that email is deleted
 - after the password is changed, the OTP is marked as used
-
