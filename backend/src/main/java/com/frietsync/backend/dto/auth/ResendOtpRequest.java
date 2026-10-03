@@ -1,12 +1,13 @@
 package com.frietsync.backend.dto.auth;
 
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 @Data
-public class RefreshRequest {
+public class ResendOtpRequest {
 
     @NotBlank
-    private String refreshToken;
+    @Email
+    private String email;
 }
-
