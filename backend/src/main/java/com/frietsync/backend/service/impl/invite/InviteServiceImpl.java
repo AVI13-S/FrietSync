@@ -44,7 +44,10 @@ public class InviteServiceImpl implements InviteService {
             throw new BadRequestException("Email is required");
         }
         Instant now = Instant.now();
-        if (request.getExpiresAt() == null || !request.getExpiresAt().isAfter(now)) {
+        Instant expiresAt = request.getExpiresAt() == null
+                ? now.plus(INVITE_VALIDITY)
+                : request.getExpiresAt();
+        if (!expiresAt.isAfter(now)) {
             throw new BadRequestException("Invite expiration time must be in the future");
         }
         if (request.getRole() == null || request.getRole() == Role.ADMIN) {
@@ -60,7 +63,7 @@ public class InviteServiceImpl implements InviteService {
         invite.setRole(request.getRole());
         invite.setStatus(InviteStatus.PENDING);
         invite.setInvitedBy(admin.getId());
-        invite.setExpiresAt(request.getExpiresAt());
+        invite.setExpiresAt(expiresAt);
         inviteRepository.save(invite);
 
         emailService.sendInviteMail(email, invite.getRole().name());

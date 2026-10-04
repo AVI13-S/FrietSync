@@ -1,14 +1,14 @@
 package com.frietsync.backend.service.auth;
 
 import com.frietsync.backend.dto.auth.*;
-import com.frietsync.backend.dto.user.UserResponse;
 
 public interface AuthService {
-    UserResponse signup(SignupRequest request);
+    void signup(SignupRequest request, String ipAddress);
+    void resendSignupOtp(ResendOtpRequest request, String ipAddress);
     AuthResponse login(LoginRequest request);
-    AuthResponse refreshAccessToken(RefreshRequest request);
-    void verifySignupOtp(VerifyOtpRequest request);
-    void forgotPassword(ForgotPasswordRequest request);
-    void resetPassword(ResetPasswordRequest request);
-    void logout(RefreshRequest request);
+    AuthResponse refreshAccessToken(String refreshToken);
+    void verifySignupOtp(VerifyOtpRequest request, String ipAddress);
+    void forgotPassword(ForgotPasswordRequest request, String ipAddress);
+    void resetPassword(ResetPasswordRequest request, String ipAddress);
+    void logout(String refreshToken);
 }
