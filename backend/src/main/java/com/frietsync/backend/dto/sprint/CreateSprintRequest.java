@@ -12,7 +12,7 @@ public class CreateSprintRequest {
     @NotBlank(message="Sprint must have a Name")
     private String name;
 
-    @NotNull
+    @NotBlank(message = "Sprint goal is required")
     private String goal;
 
     @NotNull(message = "Start date is required")

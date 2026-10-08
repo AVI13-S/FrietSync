@@ -1,6 +1,9 @@
 package com.frietsync.backend.dto.invite;
 
 import com.frietsync.backend.entity.user.Role;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.time.Instant;
@@ -13,7 +16,7 @@ public class InviteRequest {
     @Email(message = "Email must be a valid email address")
     private String email;
 
-    @NotBlank(message = "invite id is required")
+    @NotNull(message = "Invite id is required")
     private UUID inviteId;
 
     private Instant expiresAt;
