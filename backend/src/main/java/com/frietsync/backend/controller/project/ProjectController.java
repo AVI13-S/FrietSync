@@ -1,9 +1,6 @@
 package com.frietsync.backend.controller.project;
 
-import com.frietsync.backend.dto.project.MemberRequest;
-import com.frietsync.backend.dto.project.MemberResponse;
-import com.frietsync.backend.dto.project.ProjectRequest;
-import com.frietsync.backend.dto.project.ProjectResponse;
+import com.frietsync.backend.dto.project.*;
 import com.frietsync.backend.service.project.ProjectService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -79,5 +76,25 @@ public class ProjectController {
                                              @AuthenticationPrincipal UUID userId) {
         projectService.removeMember(projectId, memberUserId, userId);
         return ResponseEntity.noContent().build();
+    }
+    @PutMapping("/{projectId}/roles")
+    public ResponseEntity<MemberResponse> assignRole(@PathVariable UUID projectId,
+                                                     @Valid @RequestBody MemberRequest request,
+                                                     @AuthenticationPrincipal UUID userId) {
+        return ResponseEntity.ok(projectService.assignRole(projectId, request, userId));
+    }
+
+    @PostMapping("/{projectId}/labels")
+    public ResponseEntity<LabelResponse> createLabel(@PathVariable UUID projectId,
+                                                     @Valid @RequestBody LabelRequest request,
+                                                     @AuthenticationPrincipal UUID userId) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(projectService.createLabel(projectId, request, userId));
+    }
+
+    @GetMapping("/{projectId}/labels")
+    public ResponseEntity<List<LabelResponse>> labels(@PathVariable UUID projectId,
+                                                      @AuthenticationPrincipal UUID userId) {
+        return ResponseEntity.ok(projectService.getLabels(projectId, userId));
     }
 }
