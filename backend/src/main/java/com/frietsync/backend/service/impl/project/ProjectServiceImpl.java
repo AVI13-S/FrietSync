@@ -126,6 +126,9 @@ public class ProjectServiceImpl implements ProjectService {
         List<MemberResponse> responses = new ArrayList<>();
         for (ProjectMember member : projectMemberRepository.findByProjectId(projectId)) {
             User user = userRepository.findById(member.getUserId()).orElse(null);
+            if (user.getId().equals(project.getAdminId())) {
+                throw new BadRequestException("The project admin cannot be added as a member");
+            }
             if (user != null) {
                 responses.add(toMemberResponse(user, member.getRole()));
             }
@@ -147,6 +150,20 @@ public class ProjectServiceImpl implements ProjectService {
         if (projectMemberRepository.existsByProjectIdAndUserId(projectId, user.getId())) {
             throw new BadRequestException("User is already a member of this project");
         }
+        if (user.getId().equals(project.getAdminId())) {
+            throw new BadRequestException("The project admin cannot be added as a member");
+        }
+        UUID projectWs = project.getWorkspaceId();
+        if (projectWs != null) {
+            if (user.getWorkspaceId() != null && !user.getWorkspaceId().equals(projectWs)) {
+                throw new BadRequestException("User belongs to a different workspace than this project");
+            }
+            if (user.getWorkspaceId() == null) {
+                user.setWorkspaceId(projectWs);
+                userRepository.save(user);
+            }
+        }
+
 
         ProjectMember member = new ProjectMember();
         member.setProjectId(projectId);

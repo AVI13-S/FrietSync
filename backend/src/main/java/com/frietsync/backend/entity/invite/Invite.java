@@ -37,4 +37,10 @@ public class Invite extends BaseEntity {
 
     @Column(name = "accepted_at", nullable = true)
     private Instant acceptedAt;
+
+    @Column(name = "project_id")
+    private UUID projectId;
+
+    @Column(name = "workspace_id")
+    private UUID workspaceId;
 }

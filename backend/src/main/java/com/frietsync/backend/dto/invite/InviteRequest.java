@@ -12,4 +12,5 @@ public class InviteRequest {
     private UUID inviteId;
     private Instant expiresAt;
     private Role role;
+    private UUID projectId;
 }

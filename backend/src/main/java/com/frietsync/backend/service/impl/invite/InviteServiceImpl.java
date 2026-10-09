@@ -1,6 +1,8 @@
 package com.frietsync.backend.service.impl.invite;
 
+import com.frietsync.backend.entity.project.Project;
 import com.frietsync.backend.exception.BadRequestException;
+import com.frietsync.backend.repository.project.ProjectRepository;
 import com.frietsync.backend.service.email.EmailService;
 import com.frietsync.backend.dto.invite.InviteRequest;
 import com.frietsync.backend.dto.invite.InviteResponse;
@@ -28,13 +30,15 @@ public class InviteServiceImpl implements InviteService {
     private final InviteRepository inviteRepository;
     private final UserRepository userRepository;
     private final EmailService emailService;
+   private final ProjectRepository projectRepository;
 
     public InviteServiceImpl(InviteRepository inviteRepository,
                              UserRepository userRepository,
-                             EmailService emailService) {
+                             EmailService emailService, ProjectRepository projectRepository) {
         this.inviteRepository = inviteRepository;
         this.userRepository = userRepository;
         this.emailService = emailService;
+        this.projectRepository = projectRepository;
     }
 
     @Override
@@ -57,6 +61,19 @@ public class InviteServiceImpl implements InviteService {
 
         User admin = userRepository.findById(adminId)
                 .orElseThrow(() -> new BadRequestException("Admin not found"));
+        if (admin.getEmail().equalsIgnoreCase(email)) {
+            throw new BadRequestException("You cannot invite yourself");
+        }
+        UUID projectId = request.getProjectId();
+        UUID workspaceId = null;
+        if (projectId != null) {
+            Project project = projectRepository.findById(projectId)
+                    .orElseThrow(() -> new BadRequestException("Project not found"));
+            if (!adminId.equals(project.getAdminId())) {
+                throw new BadRequestException("You can only invite people to your own projects");
+            }
+            workspaceId = project.getWorkspaceId();
+        }
 
         Invite invite = new Invite();
         invite.setEmail(email);
@@ -64,6 +81,8 @@ public class InviteServiceImpl implements InviteService {
         invite.setStatus(InviteStatus.PENDING);
         invite.setInvitedBy(admin.getId());
         invite.setExpiresAt(expiresAt);
+        invite.setProjectId(projectId);
+        invite.setWorkspaceId(workspaceId);
         inviteRepository.save(invite);
 
         emailService.sendInviteMail(email, invite.getRole().name());
@@ -134,6 +153,14 @@ public class InviteServiceImpl implements InviteService {
         }
         if (isExpired(invite, Instant.now())) {
             throw new BadRequestException("This invite has expired");
+        }
+
+        if (invite.getWorkspaceId() != null) {
+            UUID current = user.getWorkspaceId();
+            if (current != null && !current.equals(invite.getWorkspaceId())) {
+                throw new BadRequestException("You belong to a different workspace than this project");
+            }
+            user.setWorkspaceId(invite.getWorkspaceId());
         }
 
         user.setRole(invite.getRole());
