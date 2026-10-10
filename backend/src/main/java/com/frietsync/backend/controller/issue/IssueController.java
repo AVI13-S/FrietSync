@@ -31,8 +31,6 @@ import java.util.UUID;
 public class IssueController {
 
     private final IssueService issueService;
-
-    // the doc lists /issue (singular); both paths are accepted
     @PostMapping({"/projects/{projectId}/issues", "/projects/{projectId}/issue"})
     public ResponseEntity<IssueResponse> create(@PathVariable UUID projectId,
                                                 @Valid @RequestBody IssueRequest request,
