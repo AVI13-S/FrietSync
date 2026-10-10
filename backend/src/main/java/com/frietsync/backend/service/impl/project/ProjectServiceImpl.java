@@ -14,6 +14,7 @@ import com.frietsync.backend.repository.project.LabelRepository;
 import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
 import com.frietsync.backend.repository.user.UserRepository;
+import com.frietsync.backend.service.issue.IssueService;
 import com.frietsync.backend.service.project.ProjectService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -29,6 +30,7 @@ public class ProjectServiceImpl implements ProjectService {
     private final UserRepository userRepository;
     private final ProjectMemberRepository projectMemberRepository;
     private final LabelRepository labelRepository;
+    private final IssueService issueService;
 
     @Override
     public ProjectResponse create(ProjectRequest request, UUID userId) {
@@ -73,6 +75,7 @@ public class ProjectServiceImpl implements ProjectService {
         }
         projectMemberRepository.deleteAll(projectMemberRepository.findByProjectId(projectId));
         labelRepository.deleteAll(labelRepository.findByProjectIdOrderByNameAsc(projectId));
+        issueService.deleteAllForProject(projectId);
         projectRepository.delete(project);
     }
 
