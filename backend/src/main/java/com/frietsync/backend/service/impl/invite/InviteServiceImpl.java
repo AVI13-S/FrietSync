@@ -1,8 +1,6 @@
 package com.frietsync.backend.service.impl.invite;
 
-import com.frietsync.backend.entity.project.Project;
 import com.frietsync.backend.exception.BadRequestException;
-import com.frietsync.backend.repository.project.ProjectRepository;
 import com.frietsync.backend.service.email.EmailService;
 import com.frietsync.backend.dto.invite.InviteRequest;
 import com.frietsync.backend.dto.invite.InviteResponse;
@@ -30,15 +28,13 @@ public class InviteServiceImpl implements InviteService {
     private final InviteRepository inviteRepository;
     private final UserRepository userRepository;
     private final EmailService emailService;
-   private final ProjectRepository projectRepository;
 
     public InviteServiceImpl(InviteRepository inviteRepository,
                              UserRepository userRepository,
-                             EmailService emailService, ProjectRepository projectRepository) {
+                             EmailService emailService) {
         this.inviteRepository = inviteRepository;
         this.userRepository = userRepository;
         this.emailService = emailService;
-        this.projectRepository = projectRepository;
     }
 
     @Override
@@ -47,33 +43,38 @@ public class InviteServiceImpl implements InviteService {
         if (request.getEmail() == null || request.getEmail().isBlank()) {
             throw new BadRequestException("Email is required");
         }
+
         Instant now = Instant.now();
         Instant expiresAt = request.getExpiresAt() == null
                 ? now.plus(INVITE_VALIDITY)
                 : request.getExpiresAt();
         if (!expiresAt.isAfter(now)) {
-            throw new BadRequestException("Invite expiration time must be in the future");
+            throw new BadRequestException(
+                    "Invite expiration time must be in the future"
+            );
         }
+
         if (request.getRole() == null || request.getRole() == Role.ADMIN) {
-            throw new BadRequestException("Invite role must be PROJECT_MANAGER, TEAM_LEAD, CONTRIBUTOR, or REPORTER");
+            throw new BadRequestException(
+                    "Invite role must be PROJECT_MANAGER, TEAM_LEAD, CONTRIBUTOR, or REPORTER"
+            );
         }
         String email = request.getEmail().trim().toLowerCase();
 
         User admin = userRepository.findById(adminId)
                 .orElseThrow(() -> new BadRequestException("Admin not found"));
-        if (admin.getEmail().equalsIgnoreCase(email)) {
-            throw new BadRequestException("You cannot invite yourself");
+
+        if (admin.getRole() != Role.ADMIN) {
+            throw new BadRequestException(
+                    "Only admins can send invitations"
+            );
         }
-        UUID projectId = request.getProjectId();
-        UUID workspaceId = null;
-        if (projectId != null) {
-            Project project = projectRepository.findById(projectId)
-                    .orElseThrow(() -> new BadRequestException("Project not found"));
-            if (!adminId.equals(project.getAdminId())) {
-                throw new BadRequestException("You can only invite people to your own projects");
-            }
-            workspaceId = project.getWorkspaceId();
+        if (email.equalsIgnoreCase(admin.getEmail())) {
+            throw new BadRequestException(
+                    "You cannot invite yourself"
+            );
         }
+        ensureWorkspaceId(admin);
 
         Invite invite = new Invite();
         invite.setEmail(email);
@@ -81,8 +82,8 @@ public class InviteServiceImpl implements InviteService {
         invite.setStatus(InviteStatus.PENDING);
         invite.setInvitedBy(admin.getId());
         invite.setExpiresAt(expiresAt);
-        invite.setProjectId(projectId);
-        invite.setWorkspaceId(workspaceId);
+        invite.setWorkspaceId(admin.getWorkspaceId());
+
         inviteRepository.save(invite);
 
         emailService.sendInviteMail(email, invite.getRole().name());
@@ -126,6 +127,13 @@ public class InviteServiceImpl implements InviteService {
         r.setEmail(i.getEmail());
         r.setRole(i.getRole());
         r.setStatus(i.getStatus());
+
+        User inviter = userRepository.findById(i.getInvitedBy())
+                .orElseThrow(() -> new BadRequestException("Inviting user not found"));
+
+        r.setInvitedByName(inviter.getName());
+        r.setInvitedByEmail(inviter.getEmail());
+        r.setWorkspaceId(i.getWorkspaceId());
         r.setCreatedAt(i.getCreatedAt());
         r.setAcceptedAt(i.getAcceptedAt());
         r.setExpiresAt(getExpirationTime(i));
@@ -142,27 +150,31 @@ public class InviteServiceImpl implements InviteService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BadRequestException("User not found"));
 
-        Invite invite = inviteRepository.findById(inviteId)
+        Invite invite = inviteRepository.findByIdForUpdate(inviteId)
                 .orElseThrow(() -> new BadRequestException("Invite not found"));
 
         if (!invite.getEmail().equalsIgnoreCase(user.getEmail())) {
-            throw new BadRequestException("This invite does not belong to your account");
+            throw new BadRequestException(
+                    "This invite does not belong to your account"
+            );
         }
+
         if (invite.getStatus() != InviteStatus.PENDING) {
             throw new BadRequestException("This invite is no longer pending");
         }
+
         if (isExpired(invite, Instant.now())) {
             throw new BadRequestException("This invite has expired");
         }
 
-        if (invite.getWorkspaceId() != null) {
-            UUID current = user.getWorkspaceId();
-            if (current != null && !current.equals(invite.getWorkspaceId())) {
-                throw new BadRequestException("You belong to a different workspace than this project");
-            }
-            user.setWorkspaceId(invite.getWorkspaceId());
+        if (user.getWorkspaceId() != null
+                && !user.getWorkspaceId().equals(invite.getWorkspaceId())) {
+            throw new BadRequestException(
+                    "You are already a member of another workspace, Leave it to join this"
+            );
         }
 
+        user.setWorkspaceId(invite.getWorkspaceId());
         user.setRole(invite.getRole());
         userRepository.save(user);
 
@@ -182,7 +194,7 @@ public class InviteServiceImpl implements InviteService {
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BadRequestException("User not found"));
-        Invite invite = inviteRepository.findById(inviteId)
+        Invite invite = inviteRepository.findByIdForUpdate(inviteId)
                 .orElseThrow(() -> new BadRequestException("Invite not found"));
 
         if (!invite.getEmail().equalsIgnoreCase(user.getEmail())) {
@@ -202,8 +214,9 @@ public class InviteServiceImpl implements InviteService {
             throw new BadRequestException("inviteId is required");
         }
 
-        Invite invite = inviteRepository.findById(inviteId)
+        Invite invite = inviteRepository.findByIdForUpdate(inviteId)
                 .orElseThrow(() -> new BadRequestException("Invite not found"));
+
         ensurePendingAndNotExpired(invite);
 
         invite.setStatus(InviteStatus.REVOKED);
@@ -228,5 +241,12 @@ public class InviteServiceImpl implements InviteService {
         return invite.getExpiresAt() != null
                 ? invite.getExpiresAt()
                 : invite.getCreatedAt().plus(INVITE_VALIDITY);
+    }
+
+    private void ensureWorkspaceId(User user) {
+        if (user.getWorkspaceId() == null) {
+            user.setWorkspaceId(UUID.randomUUID());
+            userRepository.save(user);
+        }
     }
 }

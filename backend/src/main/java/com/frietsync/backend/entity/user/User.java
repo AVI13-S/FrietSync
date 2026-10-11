@@ -34,6 +34,9 @@ public class User extends BaseEntity {
     @Column(name = "password_version", nullable = false, columnDefinition = "integer default 1")
     private Integer passwordVersion = 1;
 
+    @Column(name = "workspace_id")
+    private UUID workspaceId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role;

@@ -16,8 +16,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Arrays;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -39,9 +41,10 @@ public class AuthServiceImpl implements AuthService {
             String hashedPassword = passwordEncoder.encode(request.getPassword());
 
             User user = new User();
-            user.setName(request.getName());
+            user.setName(normalizeName(request.getName()));
             user.setEmail(email);
             user.setPasswordHash(hashedPassword);
+            user.setWorkspaceId(UUID.randomUUID());
             user.setRole(Role.ADMIN);
             user.setActive(false);
 
@@ -154,5 +157,12 @@ public class AuthServiceImpl implements AuthService {
 
     private String normalizeEmail(String email) {
         return email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizeName(String name) {
+        return Arrays.stream(name.trim().split("\\s+"))
+                .map(word -> Character.toUpperCase(word.charAt(0))
+                        + word.substring(1).toLowerCase())
+                .collect(Collectors.joining(" "));
     }
 }

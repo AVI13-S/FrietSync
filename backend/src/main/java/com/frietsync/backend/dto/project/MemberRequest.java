@@ -1,6 +1,5 @@
 package com.frietsync.backend.dto.project;
 
-import com.frietsync.backend.entity.project.ProjectRole;
 import com.frietsync.backend.entity.user.Role;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -13,7 +12,7 @@ public class MemberRequest {
     @NotBlank(message = "Email is required")
     @Email(message = "Email is not valid")
     private String email;
+
     @NotNull(message = "Role is required")
     private Role role;
-
 }
