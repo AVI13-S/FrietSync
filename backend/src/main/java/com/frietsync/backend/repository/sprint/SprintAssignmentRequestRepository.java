@@ -2,7 +2,10 @@ package com.frietsync.backend.repository.sprint;
 
 import com.frietsync.backend.entity.sprint.SprintAssignmentRequest;
 import com.frietsync.backend.entity.sprint.SprintAssignmentRequestStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -16,6 +19,10 @@ public interface SprintAssignmentRequestRepository extends JpaRepository<SprintA
             UUID requestedBy,
             SprintAssignmentRequestStatus status);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select request from SprintAssignmentRequest request where request.id = :requestId")
+    Optional<SprintAssignmentRequest> findByIdForUpdate(@Param("requestId") UUID requestId);
+
     List<SprintAssignmentRequest> findBySprintIdAndStatus(
             UUID sprintId,
             SprintAssignmentRequestStatus status);
@@ -25,6 +32,20 @@ public interface SprintAssignmentRequestRepository extends JpaRepository<SprintA
     Optional<SprintAssignmentRequest> findByIdAndSprintId(UUID id, UUID sprintId);
 
     void deleteBySprintId(UUID sprintId);
+
+    @Modifying
+    @Query("delete from SprintAssignmentRequest request where request.requestedBy = :userId "
+            + "and request.status = :status and request.sprintId in "
+            + "(select sprint.id from Sprint sprint where sprint.projectId = :projectId)")
+    void deletePendingForProjectMember(
+            @Param("projectId") UUID projectId,
+            @Param("userId") UUID userId,
+            @Param("status") SprintAssignmentRequestStatus status);
+
+    @Modifying
+    @Query("delete from SprintAssignmentRequest request where request.sprintId in "
+            + "(select sprint.id from Sprint sprint where sprint.projectId = :projectId)")
+    void deleteAllForProject(@Param("projectId") UUID projectId);
 
     @Query("select request from SprintAssignmentRequest request "
             + "where request.sprintId in (select sprint.id from Sprint sprint where sprint.projectId = :projectId) "

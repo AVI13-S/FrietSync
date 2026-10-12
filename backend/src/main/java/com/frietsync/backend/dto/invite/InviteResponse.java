@@ -1,5 +1,6 @@
 package com.frietsync.backend.dto.invite;
 
+import com.frietsync.backend.entity.invite.InvitePurpose;
 import com.frietsync.backend.entity.invite.InviteStatus;
 import com.frietsync.backend.entity.user.Role;
 import lombok.Data;
@@ -13,7 +14,11 @@ public class InviteResponse {
     private String email;
     private Role role;
     private InviteStatus status;
+    private String invitedByName;
+    private String invitedByEmail;
+    private UUID workspaceId;
     private Instant createdAt;
     private Instant acceptedAt;
     private Instant expiresAt;
+    private InvitePurpose purpose;
 }

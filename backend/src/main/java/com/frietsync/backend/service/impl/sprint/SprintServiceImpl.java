@@ -9,12 +9,14 @@ import com.frietsync.backend.entity.sprint.Sprint;
 import com.frietsync.backend.entity.sprint.SprintAssignmentRequest;
 import com.frietsync.backend.entity.sprint.SprintAssignmentRequestStatus;
 import com.frietsync.backend.entity.sprint.SprintStatus;
+import com.frietsync.backend.entity.project.ProjectMember;
 import com.frietsync.backend.entity.user.Role;
 import com.frietsync.backend.entity.user.User;
 import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.exception.ForbiddenException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.repository.project.ProjectRepository;
+import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.sprint.SprintAssignmentRequestRepository;
 import com.frietsync.backend.repository.sprint.SprintRepository;
 import com.frietsync.backend.repository.user.UserRepository;
@@ -34,6 +36,7 @@ public class SprintServiceImpl implements SprintService {
 
     private final SprintRepository sprintRepository;
     private final ProjectRepository projectRepository;
+    private final ProjectMemberRepository projectMemberRepository;
     private final UserRepository userRepository;
     private final SprintAssignmentRequestRepository assignmentRequestRepository;
 
@@ -42,10 +45,9 @@ public class SprintServiceImpl implements SprintService {
     public SprintResponse createSprint(UUID projectId, CreateSprintRequest request, UUID currentUserId) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
-        if (currentUserId == null || !currentUserId.equals(project.getProjectManagerId())) {
-            throw new ForbiddenException("Only the project manager can perform this action");
-        }
+        requireProjectManager(project, currentUserId);
         checkDates(request.getStartDate(), request.getEndDate());
+        checkDatesWithinProject(project, request.getStartDate(), request.getEndDate());
         Integer highestNumber = sprintRepository.findMaxSprintNumber(projectId);
         int nextNumber = Math.max(project.getSprintCounter(), highestNumber == null ? 0 : highestNumber) + 1;
         Sprint sprint = new Sprint();
@@ -94,6 +96,8 @@ public class SprintServiceImpl implements SprintService {
                 ? sprint.getEndDate()
                 : request.getEndDate();
         checkDates(updatedStartDate, updatedEndDate);
+        Project project = findProjectForWrite(sprint.getProjectId());
+        checkDatesWithinProject(project, updatedStartDate, updatedEndDate);
         if (request.getName() != null) sprint.setName(request.getName());
         if (request.getGoal() != null) sprint.setGoal(request.getGoal());
         sprint.setStartDate(updatedStartDate);
@@ -106,7 +110,7 @@ public class SprintServiceImpl implements SprintService {
     @Transactional
     public SprintResponse startSprint(UUID sprintId, UUID currentUserId) {
         Sprint sprint = findSprintOrThrow(sprintId);
-        requireProjectManager(sprint.getProjectId(), currentUserId);
+        requireManagerOrAssignedContributor(sprint, currentUserId);
         if (sprint.getStatus() != SprintStatus.PLANNED) {
             throw new BadRequestException("Only a planned sprint can be started");
         }
@@ -120,7 +124,7 @@ public class SprintServiceImpl implements SprintService {
     @Transactional
     public SprintResponse completeSprint(UUID sprintId, UUID currentUserId) {
         Sprint sprint = findSprintOrThrow(sprintId);
-        requireProjectManager(sprint.getProjectId(), currentUserId);
+        requireManagerOrAssignedContributor(sprint, currentUserId);
         if (sprint.getStatus() != SprintStatus.ACTIVE) {
             throw new BadRequestException("Only an active sprint can be completed");
         }
@@ -141,10 +145,13 @@ public class SprintServiceImpl implements SprintService {
     @Override
     @Transactional
     public SprintResponse assignSprint(UUID sprintId, UUID contributorId, UUID currentUserId) {
-        Sprint sprint = findSprintOrThrow(sprintId);
+        Sprint sprint = findSprintForWrite(sprintId);
         requireProjectManager(sprint.getProjectId(), currentUserId);
-        checkContributor(contributorId);
+        checkContributor(sprint.getProjectId(), contributorId);
         checkNotCompleted(sprint);
+        if (contributorId.equals(sprint.getAssignedContributorId())) {
+            throw new BadRequestException("Sprint is already assigned to this contributor");
+        }
 
         sprint.setAssignedContributorId(contributorId);
         Sprint updatedSprint = sprintRepository.save(sprint);
@@ -155,9 +162,12 @@ public class SprintServiceImpl implements SprintService {
     @Override
     @Transactional
     public SprintAssignmentRequestResponse requestAssignment(UUID sprintId, UUID currentUserId) {
-        Sprint sprint = findSprintOrThrow(sprintId);
-        checkContributor(currentUserId);
-        checkAssignable(sprint);
+        Sprint sprint = findSprintForWrite(sprintId);
+        checkContributor(sprint.getProjectId(), currentUserId);
+        checkNotCompleted(sprint);
+        if (currentUserId.equals(sprint.getAssignedContributorId())) {
+            throw new BadRequestException("Sprint is already assigned to you");
+        }
         if (assignmentRequestRepository.existsBySprintIdAndRequestedByAndStatus(
                 sprintId, currentUserId, SprintAssignmentRequestStatus.PENDING)) {
             throw new BadRequestException("You already have a pending request for this sprint");
@@ -189,15 +199,18 @@ public class SprintServiceImpl implements SprintService {
             UUID sprintId,
             UUID requestId,
             UUID currentUserId) {
-        Sprint sprint = findSprintOrThrow(sprintId);
+        Sprint sprint = findSprintForWrite(sprintId);
         requireProjectManager(sprint.getProjectId(), currentUserId);
-        SprintAssignmentRequest request = assignmentRequestRepository.findByIdAndSprintId(requestId, sprintId)
+        SprintAssignmentRequest request = assignmentRequestRepository.findByIdForUpdate(requestId)
                 .orElseThrow(() -> new ResourceNotFoundException("Sprint assignment request not found"));
+        if (!request.getSprintId().equals(sprintId)) {
+            throw new ResourceNotFoundException("Sprint assignment request not found");
+        }
         if (request.getStatus() != SprintAssignmentRequestStatus.PENDING) {
             throw new BadRequestException("Only a pending assignment request can be approved");
         }
-        checkContributor(request.getRequestedBy());
-        checkAssignable(sprint);
+        checkContributor(sprint.getProjectId(), request.getRequestedBy());
+        checkNotCompleted(sprint);
 
         sprint.setAssignedContributorId(request.getRequestedBy());
         sprintRepository.save(sprint);
@@ -209,11 +222,31 @@ public class SprintServiceImpl implements SprintService {
     }
 
     private void requireProjectManager(UUID projectId, UUID userId) {
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
+        Project project = findProjectForWrite(projectId);
+        requireProjectManager(project, userId);
+    }
+
+    private void requireProjectManager(Project project, UUID userId) {
         if (userId == null || !userId.equals(project.getProjectManagerId())) {
             throw new ForbiddenException("Only the project manager can perform this action");
         }
+        User manager = userRepository.findById(userId)
+                .orElseThrow(() -> new ForbiddenException("Project manager is not a valid user"));
+        if (manager.getRole() != Role.PROJECT_MANAGER) {
+            throw new ForbiddenException("Project manager must have the PROJECT_MANAGER role");
+        }
+    }
+
+    private void requireManagerOrAssignedContributor(Sprint sprint, UUID userId) {
+        Project project = findProjectOrThrow(sprint.getProjectId());
+        if (userId != null && userId.equals(project.getProjectManagerId())) {
+            requireProjectManager(project, userId);
+            return;
+        }
+        if (userId == null || !userId.equals(sprint.getAssignedContributorId())) {
+            throw new ForbiddenException("Only the project manager or assigned contributor can update sprint status");
+        }
+        checkContributor(sprint.getProjectId(), userId);
     }
 
     private void checkMember(UUID projectId, UUID userId) {
@@ -226,23 +259,21 @@ public class SprintServiceImpl implements SprintService {
                 || userId.equals(project.getAdminId())
                 || userId.equals(project.getProjectManagerId())
                 || userId.equals(project.getTeamLeadId());
-        if (!projectRoleMember) {
+        if (!projectRoleMember && !projectMemberRepository.existsByProjectIdAndUserId(projectId, userId)) {
             throw new ForbiddenException("You are not a member of this project");
         }
     }
 
-    private void checkContributor(UUID contributorId) {
+    private void checkContributor(UUID projectId, UUID contributorId) {
         User contributor = userRepository.findById(contributorId)
                 .orElseThrow(() -> new ResourceNotFoundException("Contributor not found"));
         if (contributor.getRole() != Role.CONTRIBUTOR) {
             throw new ForbiddenException("User is not a contributor");
         }
-    }
-
-    private void checkAssignable(Sprint sprint) {
-        checkNotCompleted(sprint);
-        if (sprint.getAssignedContributorId() != null) {
-            throw new BadRequestException("Sprint is already assigned to a contributor");
+        ProjectMember projectMember = projectMemberRepository.findByProjectIdAndUserId(projectId, contributorId)
+                .orElseThrow(() -> new ForbiddenException("Contributor is not a member of this project"));
+        if (projectMember.getRole() != Role.CONTRIBUTOR) {
+            throw new ForbiddenException("Contributor is not a member of this project");
         }
     }
 
@@ -250,6 +281,27 @@ public class SprintServiceImpl implements SprintService {
         if (startDate != null && endDate != null && endDate.isBefore(startDate)) {
             throw new BadRequestException("Sprint end date cannot be before start date");
         }
+    }
+
+    private void checkDatesWithinProject(Project project, LocalDate startDate, LocalDate endDate) {
+        if (project.getStartDate() != null && startDate != null
+                && startDate.isBefore(project.getStartDate())) {
+            throw new BadRequestException("Sprint start date cannot be before the project start date");
+        }
+        if (project.getDeadline() != null && endDate != null
+                && endDate.isAfter(project.getDeadline())) {
+            throw new BadRequestException("Sprint end date cannot be after the project deadline");
+        }
+    }
+
+    private Project findProjectForWrite(UUID projectId) {
+        return projectRepository.findByIdForUpdate(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
+    }
+
+    private Project findProjectOrThrow(UUID projectId) {
+        return projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
     }
 
     private void checkNotCompleted(Sprint sprint) {
@@ -269,6 +321,11 @@ public class SprintServiceImpl implements SprintService {
             request.setReviewedBy(reviewedBy);
         }
         assignmentRequestRepository.saveAll(pendingRequests);
+    }
+
+    private Sprint findSprintForWrite(UUID sprintId) {
+        return sprintRepository.findByIdForUpdate(sprintId)
+                .orElseThrow(() -> new ResourceNotFoundException("Sprint not found"));
     }
 
     private Sprint findSprintOrThrow(UUID sprintId) {
