@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private static final Logger LOG = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleResourceNotFoundException(
@@ -90,7 +90,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleDataIntegrityViolationException(
             DataIntegrityViolationException ex,
             HttpServletRequest request) {
-        log.warn("Database constraint violation: {}", ex.getMessage());
+        LOG.warn("Database constraint violation: {}", ex.getMessage());
         ErrorResponse errorResponse = new ErrorResponse(
                 Instant.now(),
                 HttpStatus.CONFLICT.value(),
@@ -105,7 +105,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleGenericException(
             Exception ex,
             HttpServletRequest request) {
-        log.error("Unhandled exception occurred", ex);
+        LOG.error("Unhandled exception occurred", ex);
 
         ErrorResponse errorResponse = new ErrorResponse(
                 Instant.now(),
@@ -120,7 +120,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleJwtException(
             JwtException ex,
             HttpServletRequest request) {
-        log.warn("JWT validation failed: {}", ex.getMessage());
+        LOG.warn("JWT validation failed: {}", ex.getMessage());
         ErrorResponse errorResponse = new ErrorResponse(
                 Instant.now(),
                 HttpStatus.UNAUTHORIZED.value(),

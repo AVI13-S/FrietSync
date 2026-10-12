@@ -9,7 +9,7 @@ import java.time.LocalDate;
 @Data
 public class CreateSprintRequest {
 
-    @NotBlank(message="Sprint must have a Name")
+    @NotBlank(message = "Sprint must have a Name")
     private String name;
 
     @NotBlank(message = "Sprint goal is required")

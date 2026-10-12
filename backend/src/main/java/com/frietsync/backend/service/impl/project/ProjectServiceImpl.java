@@ -14,6 +14,8 @@ import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.exception.ForbiddenException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.repository.chat.ChatMessageRepository;
+import com.frietsync.backend.repository.meeting.MeetingAttendeeRepository;
+import com.frietsync.backend.repository.meeting.MeetingRepository;
 import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
 import com.frietsync.backend.repository.sprint.SprintAssignmentRequestRepository;
@@ -36,6 +38,8 @@ public class ProjectServiceImpl implements ProjectService {
     private final UserRepository userRepository;
     private final ProjectMemberRepository projectMemberRepository;
     private final ChatMessageRepository chatMessageRepository;
+    private final MeetingRepository meetingRepository;
+    private final MeetingAttendeeRepository meetingAttendeeRepository;
     private final SprintRepository sprintRepository;
     private final SprintAssignmentRequestRepository sprintAssignmentRequestRepository;
 
@@ -96,6 +100,8 @@ public class ProjectServiceImpl implements ProjectService {
         sprintAssignmentRequestRepository.deleteAllForProject(projectId);
         sprintRepository.deleteByProjectId(projectId);
         chatMessageRepository.deleteByProjectId(projectId);
+        meetingAttendeeRepository.deleteByProjectId(projectId);
+        meetingRepository.deleteByProjectId(projectId);
         projectMemberRepository.deleteAll(projectMemberRepository.findByProjectId(projectId));
         projectRepository.delete(project);
     }
