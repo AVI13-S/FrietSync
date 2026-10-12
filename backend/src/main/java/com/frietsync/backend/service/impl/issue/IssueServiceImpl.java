@@ -31,6 +31,7 @@ import com.frietsync.backend.service.issue.IssueService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.frietsync.backend.repository.issue.IssueLinkRepository;
 
 import java.time.Instant;
 import java.util.List;
@@ -53,6 +54,7 @@ public class IssueServiceImpl implements IssueService {
     private final ProjectAccess access;
     private final IssueMapper mapper;
     private final IssueHistoryRecorder history;
+    private final IssueLinkRepository issueLinkRepository;
 
     @Override
     public IssueResponse create(UUID projectId, IssueRequest r, UUID userId) {
@@ -293,5 +295,15 @@ public class IssueServiceImpl implements IssueService {
         response.setName(label.getName());
         response.setColor(label.getColor());
         return response;
+    }
+    private void purge(Issue issue) {
+        UUID id = issue.getId();
+        attachmentService.deleteAllForIssue(id);
+        issueLabelRepository.deleteByIssueId(id);
+        assigneeRepository.deleteByIssueId(id);
+        requestRepository.deleteByIssueId(id);
+        issueLinkRepository.deleteBySourceIssueIdOrTargetIssueId(id, id);
+        historyRepository.deleteByIssueId(id);
+        issueRepository.delete(issue);
     }
 }
