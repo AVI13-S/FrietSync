@@ -18,6 +18,8 @@ import com.frietsync.backend.repository.chat.ChatMessageRepository;
 import com.frietsync.backend.repository.project.MilestoneRepository;
 import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
+import com.frietsync.backend.repository.project.ReleaseIssueRepository;
+import com.frietsync.backend.repository.project.ReleaseRepository;
 import com.frietsync.backend.repository.sprint.SprintAssignmentRequestRepository;
 import com.frietsync.backend.repository.sprint.SprintRepository;
 import com.frietsync.backend.repository.user.UserRepository;
@@ -41,6 +43,8 @@ public class ProjectServiceImpl implements ProjectService {
     private final MilestoneRepository milestoneRepository;
     private final SprintRepository sprintRepository;
     private final SprintAssignmentRequestRepository sprintAssignmentRequestRepository;
+    private final ReleaseRepository releaseRepository;
+    private final ReleaseIssueRepository releaseIssueRepository;
 
     @Override
     public ProjectResponse create(ProjectRequest request, UUID userId) {
@@ -112,6 +116,10 @@ public class ProjectServiceImpl implements ProjectService {
         sprintAssignmentRequestRepository.deleteAllForProject(projectId);
         sprintRepository.deleteByProjectId(projectId);
         chatMessageRepository.deleteByProjectId(projectId);
+        for (var release : releaseRepository.findByProjectIdOrderByReleaseDateAsc(projectId)) {
+            releaseIssueRepository.deleteByReleaseId(release.getId());
+        }
+        releaseRepository.deleteByProjectId(projectId);
         milestoneRepository.deleteByProjectId(projectId);
         projectMemberRepository.deleteAll(projectMemberRepository.findByProjectId(projectId));
         projectRepository.delete(project);
