@@ -5,6 +5,7 @@ import com.frietsync.backend.dto.sprint.SprintAssignmentRequestResponse;
 import com.frietsync.backend.dto.sprint.SprintResponse;
 import com.frietsync.backend.dto.sprint.UpdateSprintRequest;
 import com.frietsync.backend.entity.project.Project;
+import com.frietsync.backend.entity.project.Milestone;
 import com.frietsync.backend.entity.sprint.Sprint;
 import com.frietsync.backend.entity.sprint.SprintAssignmentRequest;
 import com.frietsync.backend.entity.sprint.SprintAssignmentRequestStatus;
@@ -17,6 +18,7 @@ import com.frietsync.backend.exception.ForbiddenException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.repository.project.ProjectRepository;
 import com.frietsync.backend.repository.project.ProjectMemberRepository;
+import com.frietsync.backend.repository.project.MilestoneRepository;
 import com.frietsync.backend.repository.sprint.SprintAssignmentRequestRepository;
 import com.frietsync.backend.repository.sprint.SprintRepository;
 import com.frietsync.backend.repository.user.UserRepository;
@@ -37,6 +39,7 @@ public class SprintServiceImpl implements SprintService {
     private final SprintRepository sprintRepository;
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository projectMemberRepository;
+    private final MilestoneRepository milestoneRepository;
     private final UserRepository userRepository;
     private final SprintAssignmentRequestRepository assignmentRequestRepository;
 
@@ -46,12 +49,14 @@ public class SprintServiceImpl implements SprintService {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
         requireProjectManager(project, currentUserId);
+        checkMilestoneProject(projectId, request.getMilestoneId());
         checkDates(request.getStartDate(), request.getEndDate());
         checkDatesWithinProject(project, request.getStartDate(), request.getEndDate());
         Integer highestNumber = sprintRepository.findMaxSprintNumber(projectId);
         int nextNumber = Math.max(project.getSprintCounter(), highestNumber == null ? 0 : highestNumber) + 1;
         Sprint sprint = new Sprint();
         sprint.setProjectId(projectId);
+        sprint.setMilestoneId(request.getMilestoneId());
         sprint.setSprintNumber(nextNumber);
         sprint.setName(request.getName());
         sprint.setGoal(request.getGoal());
@@ -63,16 +68,18 @@ public class SprintServiceImpl implements SprintService {
         Sprint savedSprint = sprintRepository.save(sprint);
         project.setSprintCounter(nextNumber);
         projectRepository.save(project);
-        return SprintResponse.fromEntity(savedSprint);
+        return toResponse(savedSprint);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<SprintResponse> listSprints(UUID projectId, UUID currentUserId) {
         checkMember(projectId, currentUserId);
-        return sprintRepository.findByProjectId(projectId).stream()
-                .map(SprintResponse::fromEntity)
-                .toList();
+        List<SprintResponse> responses = new ArrayList<>();
+        for (Sprint sprint : sprintRepository.findByProjectId(projectId)) {
+            responses.add(toResponse(sprint));
+        }
+        return responses;
     }
 
     @Override
@@ -80,7 +87,7 @@ public class SprintServiceImpl implements SprintService {
     public SprintResponse getSprint(UUID sprintId, UUID currentUserId) {
         Sprint sprint = findSprintOrThrow(sprintId);
         checkMember(sprint.getProjectId(), currentUserId);
-        return SprintResponse.fromEntity(sprint);
+        return toResponse(sprint);
     }
 
     @Override
@@ -97,13 +104,17 @@ public class SprintServiceImpl implements SprintService {
                 : request.getEndDate();
         checkDates(updatedStartDate, updatedEndDate);
         Project project = findProjectForWrite(sprint.getProjectId());
+        if (request.getMilestoneId() != null) {
+            checkMilestoneProject(sprint.getProjectId(), request.getMilestoneId());
+            sprint.setMilestoneId(request.getMilestoneId());
+        }
         checkDatesWithinProject(project, updatedStartDate, updatedEndDate);
         if (request.getName() != null) sprint.setName(request.getName());
         if (request.getGoal() != null) sprint.setGoal(request.getGoal());
         sprint.setStartDate(updatedStartDate);
         sprint.setEndDate(updatedEndDate);
         Sprint updatedSprint = sprintRepository.save(sprint);
-        return SprintResponse.fromEntity(updatedSprint);
+        return toResponse(updatedSprint);
     }
 
     @Override
@@ -117,7 +128,7 @@ public class SprintServiceImpl implements SprintService {
 
         sprint.setStatus(SprintStatus.ACTIVE);
         Sprint updatedSprint = sprintRepository.save(sprint);
-        return SprintResponse.fromEntity(updatedSprint);
+        return toResponse(updatedSprint);
     }
 
     @Override
@@ -130,7 +141,7 @@ public class SprintServiceImpl implements SprintService {
         }
         sprint.setStatus(SprintStatus.COMPLETED);
         Sprint updatedSprint = sprintRepository.save(sprint);
-        return SprintResponse.fromEntity(updatedSprint);
+        return toResponse(updatedSprint);
     }
 
     @Override
@@ -156,7 +167,7 @@ public class SprintServiceImpl implements SprintService {
         sprint.setAssignedContributorId(contributorId);
         Sprint updatedSprint = sprintRepository.save(sprint);
         rejectRequests(sprint, currentUserId, null);
-        return SprintResponse.fromEntity(updatedSprint);
+        return toResponse(updatedSprint);
     }
 
     @Override
@@ -281,6 +292,29 @@ public class SprintServiceImpl implements SprintService {
         if (startDate != null && endDate != null && endDate.isBefore(startDate)) {
             throw new BadRequestException("Sprint end date cannot be before start date");
         }
+    }
+
+    private void checkMilestoneProject(UUID projectId, UUID milestoneId) {
+        if (milestoneId == null) {
+            return;
+        }
+        Milestone milestone = milestoneRepository.findById(milestoneId)
+                .orElseThrow(() -> new ResourceNotFoundException("Milestone not found"));
+        if (!projectId.equals(milestone.getProjectId())) {
+            throw new BadRequestException("Milestone must belong to the sprint's project");
+        }
+    }
+
+    private SprintResponse toResponse(Sprint sprint) {
+        String milestoneName = null;
+        if (sprint.getMilestoneId() != null) {
+            Milestone milestone = milestoneRepository.findById(sprint.getMilestoneId())
+                    .orElse(null);
+            if (milestone != null) {
+                milestoneName = milestone.getName();
+            }
+        }
+        return SprintResponse.fromEntity(sprint, milestoneName);
     }
 
     private void checkDatesWithinProject(Project project, LocalDate startDate, LocalDate endDate) {
