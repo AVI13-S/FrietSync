@@ -4,7 +4,7 @@ import com.frietsync.backend.dto.notification.NotificationPageResponse;
 import com.frietsync.backend.dto.notification.NotificationPreferenceResponse;
 import com.frietsync.backend.dto.notification.NotificationResponse;
 import com.frietsync.backend.dto.notification.PreferenceUpdate;
-import com.frietsync.backend.dto.notification.UpdatePreferencesRequest;
+import com.frietsync.backend.dto.notification.UpdatePreferenceRequest;
 import com.frietsync.backend.entity.notification.Notification;
 import com.frietsync.backend.entity.notification.NotificationPreference;
 import com.frietsync.backend.entity.notification.NotificationType;
@@ -93,7 +93,7 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     @Override
-    public List<NotificationPreferenceResponse> updatePreferences(UUID userId, UpdatePreferencesRequest request) {
+    public List<NotificationPreferenceResponse> updatePreferences(UUID userId, UpdatePreferenceRequest request) {
         Map<NotificationType, NotificationPreference> existing = new HashMap<>();
         preferenceRepository.findByUserId(userId).forEach(p -> existing.put(p.getType(), p));
 

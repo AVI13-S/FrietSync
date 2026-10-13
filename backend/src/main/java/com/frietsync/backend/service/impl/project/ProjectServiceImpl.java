@@ -20,6 +20,7 @@ import com.frietsync.backend.repository.sprint.SprintAssignmentRequestRepository
 import com.frietsync.backend.repository.sprint.SprintRepository;
 import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.service.project.ProjectService;
+import com.frietsync.backend.service.issue.IssueService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,6 +39,7 @@ public class ProjectServiceImpl implements ProjectService {
     private final ChatMessageRepository chatMessageRepository;
     private final SprintRepository sprintRepository;
     private final SprintAssignmentRequestRepository sprintAssignmentRequestRepository;
+    private final IssueService issueService;
 
     @Override
     public ProjectResponse create(ProjectRequest request, UUID userId) {
@@ -95,6 +97,7 @@ public class ProjectServiceImpl implements ProjectService {
         }
         sprintAssignmentRequestRepository.deleteAllForProject(projectId);
         sprintRepository.deleteByProjectId(projectId);
+        issueService.deleteAllForProject(projectId);
         chatMessageRepository.deleteByProjectId(projectId);
         projectMemberRepository.deleteAll(projectMemberRepository.findByProjectId(projectId));
         projectRepository.delete(project);

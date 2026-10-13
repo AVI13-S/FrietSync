@@ -279,6 +279,7 @@ public class IssueServiceImpl implements IssueService {
         issueLabelRepository.deleteByIssueId(id);
         assigneeRepository.deleteByIssueId(id);
         requestRepository.deleteByIssueId(id);
+        issueLinkRepository.deleteBySourceIssueIdOrTargetIssueId(id, id);
         historyRepository.deleteByIssueId(id);
         issueRepository.delete(issue);
     }
@@ -295,15 +296,5 @@ public class IssueServiceImpl implements IssueService {
         response.setName(label.getName());
         response.setColor(label.getColor());
         return response;
-    }
-    private void purge(Issue issue) {
-        UUID id = issue.getId();
-        attachmentService.deleteAllForIssue(id);
-        issueLabelRepository.deleteByIssueId(id);
-        assigneeRepository.deleteByIssueId(id);
-        requestRepository.deleteByIssueId(id);
-        issueLinkRepository.deleteBySourceIssueIdOrTargetIssueId(id, id);
-        historyRepository.deleteByIssueId(id);
-        issueRepository.delete(issue);
     }
 }

@@ -51,7 +51,4 @@ public class Invite extends BaseEntity {
 
     @Column(name = "project_id")
     private UUID projectId;
-
-    @Column(name = "workspace_id")
-    private UUID workspaceId;
 }

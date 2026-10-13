@@ -22,6 +22,10 @@ public class InviteRequest {
 
     @Future
     private Instant expiresAt;
+
+    @NotNull
+    private InvitePurpose purpose;
+
     private Role role;
     private UUID projectId;
 }
