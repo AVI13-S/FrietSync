@@ -44,6 +44,4 @@ public class User extends BaseEntity {
     @Column(nullable = false)
     private boolean active = true;
 
-    @Column(name = "workspace_id")
-    private UUID workspaceId;
 }
