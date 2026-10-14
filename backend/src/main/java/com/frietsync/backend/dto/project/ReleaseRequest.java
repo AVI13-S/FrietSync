@@ -16,4 +16,7 @@ public class ReleaseRequest {
     private String description;
 
     private LocalDate releaseDate;
+
+    @Size(max = 2000)
+    private String releaseUrl;
 }

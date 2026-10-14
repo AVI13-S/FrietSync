@@ -15,6 +15,8 @@ public class ReleaseResponse {
     private String name;
     private String description;
     private LocalDate releaseDate;
+    private String releaseUrl;
+    private String releaseFileUrl;
     private List<UUID> issueIds;
     private Instant createdAt;
     private Instant updatedAt;
@@ -26,6 +28,7 @@ public class ReleaseResponse {
         response.setName(release.getName());
         response.setDescription(release.getDescription());
         response.setReleaseDate(release.getReleaseDate());
+        response.setReleaseUrl(release.getReleaseUrl());
         response.setIssueIds(issueIds);
         response.setCreatedAt(release.getCreatedAt());
         response.setUpdatedAt(release.getUpdatedAt());

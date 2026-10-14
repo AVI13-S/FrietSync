@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
@@ -49,5 +50,11 @@ public class ReleaseController {
     public ReleaseResponse attachIssues(@PathVariable UUID releaseId,
             @Valid @RequestBody AttachIssuesRequest request, @AuthenticationPrincipal UUID userId) {
         return releaseService.attachIssues(releaseId, userId, request);
+    }
+
+    @PostMapping(value = "/releases/{releaseId}/file", consumes = "multipart/form-data")
+    public ReleaseResponse uploadFile(@PathVariable UUID releaseId,
+            @RequestPart("file") MultipartFile file, @AuthenticationPrincipal UUID userId) {
+        return releaseService.uploadFile(releaseId, userId, file);
     }
 }

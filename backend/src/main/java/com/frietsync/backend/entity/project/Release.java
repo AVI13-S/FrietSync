@@ -26,4 +26,10 @@ public class Release extends BaseEntity {
 
     @Column(name = "release_date")
     private LocalDate releaseDate;
+
+    @Column(name = "release_url", length = 2000)
+    private String releaseUrl;
+
+    @Column(name = "release_file_key", length = 1000)
+    private String releaseFileKey;
 }
