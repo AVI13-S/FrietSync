@@ -19,4 +19,7 @@ public interface IssueHistoryRepository extends JpaRepository<IssueHistory, UUID
 
     List<IssueHistory> findByIssueIdInAndCreatedAtBetweenOrderByCreatedAtDesc(
             Collection<UUID> issueIds, Instant from, Instant to);
+
+    List<IssueHistory> findByIssueIdInAndCreatedAtLessThanEqualOrderByCreatedAtAsc(
+            Collection<UUID> issueIds, Instant at);
 }
