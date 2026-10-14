@@ -13,4 +13,6 @@ public interface IssueLabelRepository extends JpaRepository<IssueLabel, UUID> {
     boolean existsByIssueIdAndLabelId(UUID issueId, UUID labelId);
 
     void deleteByIssueId(UUID issueId);
+
+    void deleteByIssueIdAndLabelId(UUID issueId, UUID labelId);
 }

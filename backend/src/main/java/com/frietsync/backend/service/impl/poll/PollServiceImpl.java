@@ -9,6 +9,8 @@ import com.frietsync.backend.entity.poll.PollOption;
 import com.frietsync.backend.entity.poll.PollStatus;
 import com.frietsync.backend.entity.poll.PollVote;
 import com.frietsync.backend.entity.project.Project;
+import com.frietsync.backend.entity.project.Milestone;
+import com.frietsync.backend.entity.issue.Issue;
 import com.frietsync.backend.entity.sprint.Sprint;
 import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.exception.ForbiddenException;
@@ -16,6 +18,8 @@ import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.repository.poll.PollOptionRepository;
 import com.frietsync.backend.repository.poll.PollRepository;
 import com.frietsync.backend.repository.poll.PollVoteRepository;
+import com.frietsync.backend.repository.issue.IssueRepository;
+import com.frietsync.backend.repository.project.MilestoneRepository;
 import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
 import com.frietsync.backend.repository.sprint.SprintRepository;
@@ -41,6 +45,8 @@ public class PollServiceImpl implements PollService {
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository memberRepository;
     private final SprintRepository sprintRepository;
+    private final IssueRepository issueRepository;
+    private final MilestoneRepository milestoneRepository;
 
     @Override
     @Transactional
@@ -50,6 +56,12 @@ public class PollServiceImpl implements PollService {
         requireMember(project, userId);
         if (request.getClosesAt() != null && !request.getClosesAt().isAfter(Instant.now())) {
             throw new BadRequestException("Poll deadline must be in the future");
+        }
+        int linkedObjectCount = (request.getIssueId() == null ? 0 : 1)
+                + (request.getSprintId() == null ? 0 : 1)
+                + (request.getMilestoneId() == null ? 0 : 1);
+        if (linkedObjectCount > 1) {
+            throw new BadRequestException("A poll can be linked to only one issue, sprint, or milestone");
         }
         Set<String> labels = new HashSet<>();
         for (String label : request.getOptions()) {
@@ -64,11 +76,25 @@ public class PollServiceImpl implements PollService {
                 throw new BadRequestException("Linked sprint must belong to this project");
             }
         }
+        if (request.getIssueId() != null) {
+            Issue issue = issueRepository.findById(request.getIssueId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Issue not found"));
+            if (!projectId.equals(issue.getProjectId())) {
+                throw new BadRequestException("Linked issue must belong to this project");
+            }
+        }
+        if (request.getMilestoneId() != null) {
+            Milestone milestone = milestoneRepository.findById(request.getMilestoneId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Milestone not found"));
+            if (!projectId.equals(milestone.getProjectId())) {
+                throw new BadRequestException("Linked milestone must belong to this project");
+            }
+        }
         Poll poll = new Poll();
         poll.setProjectId(projectId);
         poll.setQuestion(request.getQuestion().trim());
         poll.setDescription(trimToNull(request.getDescription()));
-        poll.setMode(PollMode.SINGLE);
+        poll.setMode(request.getMode() == null ? PollMode.SINGLE : request.getMode());
         poll.setCreatedBy(userId);
         poll.setIssueId(request.getIssueId());
         poll.setSprintId(request.getSprintId());
@@ -116,15 +142,38 @@ public class PollServiceImpl implements PollService {
         List<PollOption> options = optionRepository.findByPollIdOrderByOptionOrder(pollId);
         Set<UUID> validIds = new HashSet<>();
         options.forEach(option -> validIds.add(option.getId()));
-        if (!validIds.contains(request.getOptionId())) {
-            throw new BadRequestException("Selected option does not belong to this poll");
+        List<UUID> selectedIds;
+        if (request.getOptionIds() != null) {
+            if (request.getOptionId() != null) {
+                throw new BadRequestException("Use optionId or optionIds, not both");
+            }
+            selectedIds = request.getOptionIds();
+        } else if (request.getOptionId() != null) {
+            selectedIds = List.of(request.getOptionId());
+        } else {
+            throw new BadRequestException("At least one option must be selected");
+        }
+        if (selectedIds.isEmpty()) {
+            throw new BadRequestException("At least one option must be selected");
+        }
+        Set<UUID> selectedSet = new HashSet<>(selectedIds);
+        if (selectedSet.size() != selectedIds.size()) {
+            throw new BadRequestException("An option cannot be selected more than once");
+        }
+        if (poll.getMode() == PollMode.SINGLE && selectedIds.size() != 1) {
+            throw new BadRequestException("Single-choice polls accept exactly one option");
+        }
+        if (!validIds.containsAll(selectedIds)) {
+            throw new BadRequestException("Every selected option must belong to this poll");
         }
         voteRepository.deleteByPollIdAndUserId(pollId, userId);
-        PollVote vote = new PollVote();
-        vote.setPollId(pollId);
-        vote.setOptionId(request.getOptionId());
-        vote.setUserId(userId);
-        voteRepository.save(vote);
+        for (UUID optionId : selectedIds) {
+            PollVote vote = new PollVote();
+            vote.setPollId(pollId);
+            vote.setOptionId(optionId);
+            vote.setUserId(userId);
+            voteRepository.save(vote);
+        }
         return response(poll, userId);
     }
 

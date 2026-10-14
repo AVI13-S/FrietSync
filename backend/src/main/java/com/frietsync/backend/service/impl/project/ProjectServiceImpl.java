@@ -20,12 +20,11 @@ import com.frietsync.backend.repository.meeting.MeetingRepository;
 import com.frietsync.backend.repository.project.MilestoneRepository;
 import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
-import com.frietsync.backend.repository.project.ReleaseIssueRepository;
-import com.frietsync.backend.repository.project.ReleaseRepository;
 import com.frietsync.backend.repository.sprint.SprintAssignmentRequestRepository;
 import com.frietsync.backend.repository.sprint.SprintRepository;
 import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.service.project.ProjectService;
+import com.frietsync.backend.service.project.ReleaseService;
 import com.frietsync.backend.service.issue.IssueService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -48,9 +47,8 @@ public class ProjectServiceImpl implements ProjectService {
     private final MilestoneRepository milestoneRepository;
     private final SprintRepository sprintRepository;
     private final SprintAssignmentRequestRepository sprintAssignmentRequestRepository;
-    private final ReleaseRepository releaseRepository;
-    private final ReleaseIssueRepository releaseIssueRepository;
     private final IssueService issueService;
+    private final ReleaseService releaseService;
 
     @Override
     public ProjectResponse create(ProjectRequest request, UUID userId) {
@@ -125,10 +123,7 @@ public class ProjectServiceImpl implements ProjectService {
         chatMessageRepository.deleteByProjectId(projectId);
         meetingAttendeeRepository.deleteByProjectId(projectId);
         meetingRepository.deleteByProjectId(projectId);
-        for (var release : releaseRepository.findByProjectIdOrderByReleaseDateAsc(projectId)) {
-            releaseIssueRepository.deleteByReleaseId(release.getId());
-        }
-        releaseRepository.deleteByProjectId(projectId);
+        releaseService.deleteAllForProject(projectId);
         milestoneRepository.deleteByProjectId(projectId);
         projectMemberRepository.deleteAll(projectMemberRepository.findByProjectId(projectId));
         projectRepository.delete(project);

@@ -1,5 +1,6 @@
 package com.frietsync.backend.controller.issue;
 
+import com.frietsync.backend.dto.issue.IssuePageResponse;
 import com.frietsync.backend.dto.issue.IssueHistoryResponse;
 import com.frietsync.backend.dto.issue.IssueLabelRequest;
 import com.frietsync.backend.dto.issue.IssueRequest;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -31,6 +33,7 @@ import java.util.UUID;
 public class IssueController {
 
     private final IssueService issueService;
+
     @PostMapping({"/projects/{projectId}/issues", "/projects/{projectId}/issue"})
     public ResponseEntity<IssueResponse> create(@PathVariable UUID projectId,
                                                 @Valid @RequestBody IssueRequest request,
@@ -39,9 +42,11 @@ public class IssueController {
     }
 
     @GetMapping("/projects/{projectId}/issues")
-    public ResponseEntity<List<IssueResponse>> list(@PathVariable UUID projectId,
+    public ResponseEntity<IssuePageResponse<IssueResponse>> list(@PathVariable UUID projectId,
+                                                    @RequestParam(defaultValue = "0") int page,
+                                                    @RequestParam(defaultValue = "20") int size,
                                                     @AuthenticationPrincipal UUID userId) {
-        return ResponseEntity.ok(issueService.listForProject(projectId, userId));
+        return ResponseEntity.ok(issueService.listForProject(projectId, userId, page, size));
     }
 
     @GetMapping("/issues/{issueId}")
@@ -71,9 +76,11 @@ public class IssueController {
     }
 
     @GetMapping("/issues/{issueId}/history")
-    public ResponseEntity<List<IssueHistoryResponse>> history(@PathVariable UUID issueId,
+    public ResponseEntity<IssuePageResponse<IssueHistoryResponse>> history(@PathVariable UUID issueId,
+                                                              @RequestParam(defaultValue = "0") int page,
+                                                              @RequestParam(defaultValue = "20") int size,
                                                               @AuthenticationPrincipal UUID userId) {
-        return ResponseEntity.ok(issueService.history(issueId, userId));
+        return ResponseEntity.ok(issueService.history(issueId, userId, page, size));
     }
 
     @PostMapping("/issues/{issueId}/review/approve")
@@ -101,5 +108,13 @@ public class IssueController {
     public ResponseEntity<List<LabelResponse>> labels(@PathVariable UUID issueId,
                                                       @AuthenticationPrincipal UUID userId) {
         return ResponseEntity.ok(issueService.labels(issueId, userId));
+    }
+
+    @DeleteMapping("/issues/{issueId}/labels/{labelId}")
+    public ResponseEntity<Void> removeLabel(@PathVariable UUID issueId,
+                                            @PathVariable UUID labelId,
+                                            @AuthenticationPrincipal UUID userId) {
+        issueService.removeLabel(issueId, labelId, userId);
+        return ResponseEntity.noContent().build();
     }
 }

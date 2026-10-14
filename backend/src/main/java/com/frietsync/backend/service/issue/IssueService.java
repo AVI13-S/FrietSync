@@ -1,6 +1,7 @@
 package com.frietsync.backend.service.issue;
 
 import com.frietsync.backend.dto.issue.IssueHistoryResponse;
+import com.frietsync.backend.dto.issue.IssuePageResponse;
 import com.frietsync.backend.dto.issue.IssueLabelRequest;
 import com.frietsync.backend.dto.issue.IssueRequest;
 import com.frietsync.backend.dto.issue.IssueResponse;
@@ -14,7 +15,7 @@ import java.util.UUID;
 public interface IssueService {
     IssueResponse create(UUID projectId, IssueRequest request, UUID userId);
 
-    List<IssueResponse> listForProject(UUID projectId, UUID userId);
+    IssuePageResponse<IssueResponse> listForProject(UUID projectId, UUID userId, int page, int size);
 
     IssueResponse get(UUID issueId, UUID userId);
 
@@ -28,9 +29,11 @@ public interface IssueService {
 
     IssueResponse rejectReview(UUID issueId, ReviewRequest request, UUID userId);
 
-    List<IssueHistoryResponse> history(UUID issueId, UUID userId);
+    IssuePageResponse<IssueHistoryResponse> history(UUID issueId, UUID userId, int page, int size);
 
     LabelResponse addLabel(UUID issueId, IssueLabelRequest request, UUID userId);
+
+    void removeLabel(UUID issueId, UUID labelId, UUID userId);
 
     List<LabelResponse> labels(UUID issueId, UUID userId);
 

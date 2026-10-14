@@ -10,4 +10,5 @@ public interface ReleaseIssueRepository extends JpaRepository<ReleaseIssue, UUID
     List<ReleaseIssue> findByReleaseId(UUID releaseId);
     boolean existsByReleaseIdAndIssueId(UUID releaseId, UUID issueId);
     void deleteByReleaseId(UUID releaseId);
+    void deleteByIssueId(UUID issueId);
 }

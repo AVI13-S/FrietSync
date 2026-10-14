@@ -1,6 +1,7 @@
 package com.frietsync.backend.service.impl.issue;
 
 import com.frietsync.backend.dto.issue.IssueHistoryResponse;
+import com.frietsync.backend.dto.issue.IssuePageResponse;
 import com.frietsync.backend.dto.issue.IssueLabelRequest;
 import com.frietsync.backend.dto.issue.IssueRequest;
 import com.frietsync.backend.dto.issue.IssueResponse;
@@ -25,12 +26,16 @@ import com.frietsync.backend.repository.issue.IssueLabelRepository;
 import com.frietsync.backend.repository.issue.IssueRepository;
 import com.frietsync.backend.repository.project.LabelRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
+import com.frietsync.backend.repository.project.ReleaseIssueRepository;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
 import com.frietsync.backend.service.issue.IssueAttachmentService;
 import com.frietsync.backend.service.issue.IssueService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import com.frietsync.backend.repository.issue.IssueLinkRepository;
 
 import java.time.Instant;
@@ -42,6 +47,8 @@ import java.util.UUID;
 @Transactional
 @RequiredArgsConstructor
 public class IssueServiceImpl implements IssueService {
+
+    private static final int MAX_PAGE_SIZE = 100;
 
     private final IssueRepository issueRepository;
     private final IssueAssigneeRepository assigneeRepository;
@@ -55,12 +62,16 @@ public class IssueServiceImpl implements IssueService {
     private final IssueMapper mapper;
     private final IssueHistoryRecorder history;
     private final IssueLinkRepository issueLinkRepository;
+    private final ReleaseIssueRepository releaseIssueRepository;
 
     @Override
     public IssueResponse create(UUID projectId, IssueRequest r, UUID userId) {
         Project project = projectRepository.findByIdForUpdate(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
-        access.requireMember(project, userId);
+        Role role = access.requireMember(project, userId);
+        if (role != Role.PROJECT_MANAGER && role != Role.REPORTER) {
+            throw new ForbiddenException("Only the project manager or a reporter can create issues");
+        }
         project.setIssueCounter(project.getIssueCounter() + 1);
         projectRepository.save(project);
 
@@ -81,10 +92,15 @@ public class IssueServiceImpl implements IssueService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<IssueResponse> listForProject(UUID projectId, UUID userId) {
+    public IssuePageResponse<IssueResponse> listForProject(UUID projectId, UUID userId, int page, int size) {
         Project project = access.project(projectId);
         access.requireMember(project, userId);
-        return mapper.toResponses(issueRepository.findByProjectIdOrderByCreatedAtDesc(projectId));
+        Page<com.frietsync.backend.entity.issue.Issue> result = issueRepository
+                .findByProjectIdAndDeletedAtIsNull(projectId, pageRequest(page, size));
+        return IssuePageResponse.<IssueResponse>builder()
+                .items(mapper.toResponses(result.getContent()))
+                .page(result.getNumber()).size(result.getSize())
+                .totalElements(result.getTotalElements()).totalPages(result.getTotalPages()).build();
     }
 
     @Override
@@ -146,7 +162,17 @@ public class IssueServiceImpl implements IssueService {
         if (!allowed) {
             throw new ForbiddenException("You don't have permission to delete this issue");
         }
-        purge(issue);
+        if (issue.getDeletedAt() == null) {
+            attachmentService.deleteAllForIssue(issue.getId());
+            issueLabelRepository.deleteByIssueId(issue.getId());
+            assigneeRepository.deleteByIssueId(issue.getId());
+            requestRepository.deleteByIssueId(issue.getId());
+            releaseIssueRepository.deleteByIssueId(issue.getId());
+            issueLinkRepository.deleteBySourceIssueIdOrTargetIssueId(issue.getId(), issue.getId());
+            issue.setDeletedAt(Instant.now());
+            issueRepository.save(issue);
+            history.record(issue.getId(), userId, IssueHistoryAction.DELETED);
+        }
     }
 
     @Override
@@ -214,10 +240,12 @@ public class IssueServiceImpl implements IssueService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<IssueHistoryResponse> history(UUID issueId, UUID userId) {
-        Issue issue = access.issue(issueId);
+    public IssuePageResponse<IssueHistoryResponse> history(UUID issueId, UUID userId, int page, int size) {
+        com.frietsync.backend.entity.issue.Issue issue = issueRepository.findById(issueId)
+                .orElseThrow(() -> new ResourceNotFoundException("Issue not found"));
         access.requireMember(access.project(issue.getProjectId()), userId);
-        return historyRepository.findByIssueIdOrderByCreatedAtDesc(issueId).stream()
+        Page<IssueHistoryResponse> result = historyRepository
+                .findByIssueIdOrderByCreatedAtDescIdDesc(issueId, pageRequest(page, size))
                 .map(h -> IssueHistoryResponse.builder()
                         .id(h.getId())
                         .actorId(h.getActorId())
@@ -227,8 +255,32 @@ public class IssueServiceImpl implements IssueService {
                         .newValue(h.getNewValue())
                         .comment(h.getComment())
                         .createdAt(h.getCreatedAt())
-                        .build())
-                .toList();
+                        .build());
+        return IssuePageResponse.<IssueHistoryResponse>builder()
+                .items(result.getContent()).page(result.getNumber()).size(result.getSize())
+                .totalElements(result.getTotalElements()).totalPages(result.getTotalPages()).build();
+    }
+
+    private PageRequest pageRequest(int page, int size) {
+        return PageRequest.of(Math.max(0, page), Math.min(Math.max(1, size), MAX_PAGE_SIZE),
+                Sort.by(Sort.Direction.DESC, "createdAt").and(Sort.by(Sort.Direction.DESC, "id")));
+    }
+
+    @Override
+    public void removeLabel(UUID issueId, UUID labelId, UUID userId) {
+        Issue issue = access.issue(issueId);
+        Project project = access.project(issue.getProjectId());
+        access.require(project, userId, Role.PROJECT_MANAGER, Role.TEAM_LEAD);
+        Label label = labelRepository.findById(labelId)
+                .orElseThrow(() -> new ResourceNotFoundException("Label not found"));
+        if (!label.getProjectId().equals(issue.getProjectId())) {
+            throw new BadRequestException("Label does not belong to this project");
+        }
+        if (!issueLabelRepository.existsByIssueIdAndLabelId(issueId, labelId)) {
+            throw new ResourceNotFoundException("Label is not attached to this issue");
+        }
+        issueLabelRepository.deleteByIssueIdAndLabelId(issueId, labelId);
+        history.record(issueId, userId, IssueHistoryAction.LABEL_REMOVED, "label", label.getName(), null);
     }
 
     @Override
@@ -279,6 +331,7 @@ public class IssueServiceImpl implements IssueService {
         issueLabelRepository.deleteByIssueId(id);
         assigneeRepository.deleteByIssueId(id);
         requestRepository.deleteByIssueId(id);
+        releaseIssueRepository.deleteByIssueId(id);
         issueLinkRepository.deleteBySourceIssueIdOrTargetIssueId(id, id);
         historyRepository.deleteByIssueId(id);
         issueRepository.delete(issue);

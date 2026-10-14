@@ -23,7 +23,8 @@ public record PollResponse(
         String decisionRecord,
         Instant createdAt,
         List<Option> options,
-        UUID myVote
+        UUID myVote,
+        List<UUID> myVotes
 ) {
 
     public record Option(
@@ -40,6 +41,10 @@ public record PollResponse(
             List<PollVote> votes,
             UUID currentUserId
     ) {
+        List<UUID> currentUserVotes = votes.stream()
+                .filter(vote -> vote.getUserId().equals(currentUserId))
+                .map(PollVote::getOptionId)
+                .toList();
         return new PollResponse(
                 poll.getId(),
                 poll.getProjectId(),
@@ -63,11 +68,8 @@ public record PollResponse(
                                         .filter(vote -> vote.getOptionId().equals(option.getId())).count()
                         ))
                         .toList(),
-                votes.stream()
-                        .filter(vote -> vote.getUserId().equals(currentUserId))
-                        .map(PollVote::getOptionId)
-                        .findFirst()
-                        .orElse(null)
+                currentUserVotes.isEmpty() ? null : currentUserVotes.get(0),
+                currentUserVotes
         );
     }
 }

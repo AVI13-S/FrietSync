@@ -58,8 +58,8 @@ public class IssueAssignmentServiceImpl implements IssueAssignmentService {
 
         Set<UUID> target = new LinkedHashSet<>(r.getUserIds());
         for (UUID uid : target) {
-            if (access.roleOf(project, uid) == null) {
-                throw new BadRequestException("User " + uid + " is not a member of this project");
+            if (access.roleOf(project, uid) != Role.CONTRIBUTOR) {
+                throw new BadRequestException("Only project contributors can be assigned to issues");
             }
         }
 
@@ -83,7 +83,13 @@ public class IssueAssignmentServiceImpl implements IssueAssignmentService {
                     .ifPresent(req -> decideRequest(req, true, userId));
         }
 
-        startWork(issue);
+        IssueStatus oldStatus = issue.getStatus();
+        if (!target.isEmpty()) {
+            startWork(issue);
+        }
+        if (oldStatus != issue.getStatus()) {
+            history.record(issueId, userId, IssueHistoryAction.UPDATED, "status", oldStatus, issue.getStatus());
+        }
         history.record(issueId, userId, IssueHistoryAction.ASSIGNED, "assignees", current, target);
         return mapper.toResponse(issue);
     }
@@ -170,10 +176,17 @@ public class IssueAssignmentServiceImpl implements IssueAssignmentService {
         boolean approve = Boolean.TRUE.equals(d.getApprove());
         if (approve) {
             ensureAssignable(issue);
+            if (access.roleOf(project, req.getUserId()) != Role.CONTRIBUTOR) {
+                throw new BadRequestException("Only project contributors can be assigned to issues");
+            }
             if (!assigneeRepository.existsByIssueIdAndUserId(issueId, req.getUserId())) {
                 addAssignee(issueId, req.getUserId(), userId);
             }
+            IssueStatus oldStatus = issue.getStatus();
             startWork(issue);
+            if (oldStatus != issue.getStatus()) {
+                history.record(issueId, userId, IssueHistoryAction.UPDATED, "status", oldStatus, issue.getStatus());
+            }
         }
         decideRequest(req, approve, userId);
         return toResponse(req);

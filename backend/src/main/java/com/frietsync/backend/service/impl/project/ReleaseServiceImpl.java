@@ -4,6 +4,7 @@ import com.frietsync.backend.dto.project.AttachIssuesRequest;
 import com.frietsync.backend.dto.project.ReleaseRequest;
 import com.frietsync.backend.dto.project.ReleaseResponse;
 import com.frietsync.backend.entity.project.Project;
+import com.frietsync.backend.entity.issue.Issue;
 import com.frietsync.backend.entity.project.ProjectMember;
 import com.frietsync.backend.entity.project.Release;
 import com.frietsync.backend.entity.project.ReleaseIssue;
@@ -12,12 +13,15 @@ import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
+import com.frietsync.backend.repository.issue.IssueRepository;
 import com.frietsync.backend.repository.project.ReleaseIssueRepository;
 import com.frietsync.backend.repository.project.ReleaseRepository;
 import com.frietsync.backend.service.project.ReleaseService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -39,6 +43,7 @@ public class ReleaseServiceImpl implements ReleaseService {
     private final ReleaseRepository releaseRepository;
     private final ReleaseIssueRepository releaseIssueRepository;
     private final ProjectRepository projectRepository;
+    private final IssueRepository issueRepository;
     private final ProjectMemberRepository projectMemberRepository;
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
@@ -81,8 +86,19 @@ public class ReleaseServiceImpl implements ReleaseService {
         Release release = findRelease(releaseId);
         requireManager(findProject(release.getProjectId()), userId);
         releaseIssueRepository.deleteByReleaseId(releaseId);
-        deleteStoredFile(release.getReleaseFileKey());
+        runAfterCommit(() -> deleteStoredFile(release.getReleaseFileKey()));
         releaseRepository.delete(release);
+    }
+
+    @Override
+    @Transactional
+    public void deleteAllForProject(UUID projectId) {
+        List<Release> releases = releaseRepository.findByProjectIdOrderByReleaseDateAsc(projectId);
+        for (Release release : releases) {
+            releaseIssueRepository.deleteByReleaseId(release.getId());
+            runAfterCommit(() -> deleteStoredFile(release.getReleaseFileKey()));
+        }
+        releaseRepository.deleteAll(releases);
     }
 
     @Override
@@ -91,6 +107,13 @@ public class ReleaseServiceImpl implements ReleaseService {
         Release release = findRelease(releaseId);
         Project project = findProject(release.getProjectId());
         requireManagerOrTeamLead(project, userId);
+        for (UUID issueId : request.getIssueIds()) {
+            Issue issue = issueRepository.findById(issueId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Issue not found: " + issueId));
+            if (!release.getProjectId().equals(issue.getProjectId())) {
+                throw new BadRequestException("Every issue must belong to the release's project");
+            }
+        }
         for (UUID issueId : request.getIssueIds()) {
             if (!releaseIssueRepository.existsByReleaseIdAndIssueId(releaseId, issueId)) {
                 ReleaseIssue link = new ReleaseIssue();
@@ -134,8 +157,10 @@ public class ReleaseServiceImpl implements ReleaseService {
         } catch (java.io.IOException exception) {
             throw new BadRequestException("Could not read the uploaded release file");
         }
-        deleteStoredFile(release.getReleaseFileKey());
+        deleteS3ObjectOnRollback(key);
+        String previousKey = release.getReleaseFileKey();
         release.setReleaseFileKey(key);
+        runAfterCommit(() -> deleteStoredFile(previousKey));
         return response(releaseRepository.save(release));
     }
 
@@ -167,8 +192,39 @@ public class ReleaseServiceImpl implements ReleaseService {
 
     private void deleteStoredFile(String key) {
         if (key != null && !key.isBlank() && bucketName != null && !bucketName.isBlank()) {
-            s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucketName).key(key).build());
+            try {
+                s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucketName).key(key).build());
+            } catch (RuntimeException exception) {
+                log.error("Could not delete S3 release file {}", key, exception);
+            }
         }
+    }
+
+    private void deleteS3ObjectOnRollback(String key) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status != STATUS_COMMITTED) {
+                    deleteStoredFile(key);
+                }
+            }
+        });
+    }
+
+    private void runAfterCommit(Runnable action) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            action.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                action.run();
+            }
+        });
     }
 
     private Project findProject(UUID id) {

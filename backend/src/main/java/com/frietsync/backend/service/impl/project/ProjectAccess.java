@@ -28,8 +28,12 @@ public class ProjectAccess {
     }
 
     public Issue issue(UUID issueId) {
-        return issueRepository.findById(issueId)
+        Issue issue = issueRepository.findById(issueId)
                 .orElseThrow(() -> new ResourceNotFoundException("Issue not found"));
+        if (issue.getDeletedAt() != null) {
+            throw new ResourceNotFoundException("Issue not found");
+        }
+        return issue;
     }
 
     public Role roleOf(Project project, UUID userId) {

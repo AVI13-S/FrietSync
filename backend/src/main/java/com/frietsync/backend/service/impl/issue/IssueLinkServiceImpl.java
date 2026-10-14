@@ -181,7 +181,9 @@ public class IssueLinkServiceImpl implements IssueLinkService {
 
         List<IssueSummaryResponse> nodes = new ArrayList<>();
         for (Issue issue : issueRepository.findByProjectIdOrderByCreatedAtDesc(projectId)) {
-            nodes.add(toSummary(issue));
+            if (issue.getDeletedAt() == null) {
+                nodes.add(toSummary(issue));
+            }
         }
         List<IssueLinkResponse> edges = toLinkResponses(linkRepository.findByProjectId(projectId));
 
@@ -191,7 +193,6 @@ public class IssueLinkServiceImpl implements IssueLinkService {
                 .build();
     }
 
-    // Only BLOCKS links are used for the graph: source issue -> issues it blocks
     private Map<UUID, List<UUID>> blockGraph(List<IssueLink> links) {
         Map<UUID, List<UUID>> graph = new HashMap<>();
         for (IssueLink link : links) {
@@ -208,7 +209,6 @@ public class IssueLinkServiceImpl implements IssueLinkService {
         return graph;
     }
 
-    // Every issue reachable from start (direct and indirect), nearest first
     private Set<UUID> downstream(Map<UUID, List<UUID>> graph, UUID start) {
         Set<UUID> seen = new LinkedHashSet<>();
         Deque<UUID> queue = new ArrayDeque<>();

@@ -15,4 +15,5 @@ public interface ReleaseService {
     void delete(UUID releaseId, UUID userId);
     ReleaseResponse attachIssues(UUID releaseId, UUID userId, AttachIssuesRequest request);
     ReleaseResponse uploadFile(UUID releaseId, UUID userId, MultipartFile file);
+    void deleteAllForProject(UUID projectId);
 }

@@ -57,4 +57,7 @@ public class Issue extends BaseEntity {
 
     @Column(name = "closed_at")
     private Instant closedAt;
+
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
 }

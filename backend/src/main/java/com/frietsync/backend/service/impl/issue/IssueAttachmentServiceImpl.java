@@ -15,9 +15,21 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -35,9 +47,13 @@ public class IssueAttachmentServiceImpl implements IssueAttachmentService {
     private final IssueAttachmentRepository attachmentRepository;
     private final ProjectAccess access;
     private final IssueHistoryRecorder history;
+    private final S3Client s3Client;
 
     @Value("${app.storage.path:./uploads}")
     private String storagePath;
+
+    @Value("${aws.s3.bucket:}")
+    private String bucketName;
 
     @Override
     public AttachmentResponse add(UUID issueId, MultipartFile file, UUID userId) {
@@ -46,23 +62,29 @@ public class IssueAttachmentServiceImpl implements IssueAttachmentService {
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("File is empty");
         }
-
-        String key = issue.getProjectId() + "/" + UUID.randomUUID();
-        Path target = resolve(key);
-        try {
-            Files.createDirectories(target.getParent());
-            try (InputStream in = file.getInputStream()) {
-                Files.copy(in, target);
-            }
-        } catch (IOException e) {
-            log.error("Could not store attachment", e);
-            throw new IllegalStateException("Could not store the file");
+        if (bucketName == null || bucketName.isBlank()) {
+            throw new BadRequestException("S3 bucket is not configured");
         }
 
+        String key = "issues/" + issue.getProjectId() + "/" + issueId + "/" + UUID.randomUUID();
         String contentType = file.getContentType();
         if (contentType == null || contentType.length() > 100) {
             contentType = "application/octet-stream";
         }
+        try {
+            try (InputStream input = file.getInputStream()) {
+                s3Client.putObject(PutObjectRequest.builder()
+                                .bucket(bucketName)
+                                .key(key)
+                                .contentType(contentType)
+                                .build(),
+                        RequestBody.fromInputStream(input, file.getSize()));
+            }
+        } catch (IOException e) {
+            log.error("Could not read issue attachment for S3 upload", e);
+            throw new IllegalStateException("Could not read the uploaded file");
+        }
+        deleteS3ObjectOnRollback(key);
 
         IssueAttachment attachment = new IssueAttachment();
         attachment.setIssueId(issueId);
@@ -114,6 +136,24 @@ public class IssueAttachmentServiceImpl implements IssueAttachmentService {
         Issue issue = access.issue(attachment.getIssueId());
         access.requireMember(access.project(issue.getProjectId()), userId);
 
+        if (isS3Key(attachment.getStorageKey())) {
+            try {
+                ResponseInputStream<GetObjectResponse> object = s3Client.getObject(GetObjectRequest.builder()
+                        .bucket(bucketName)
+                        .key(attachment.getStorageKey())
+                        .build());
+                return new AttachmentFile(attachment.getFileName(), attachment.getContentType(),
+                        new InputStreamResource(object));
+            } catch (NoSuchKeyException exception) {
+                throw new ResourceNotFoundException("File is no longer available");
+            } catch (S3Exception exception) {
+                if (exception.statusCode() == 404) {
+                    throw new ResourceNotFoundException("File is no longer available");
+                }
+                throw exception;
+            }
+        }
+
         Path path = resolve(attachment.getStorageKey());
         if (!Files.exists(path)) {
             throw new ResourceNotFoundException("File is no longer available");
@@ -144,10 +184,57 @@ public class IssueAttachmentServiceImpl implements IssueAttachmentService {
     }
 
     private void deleteFile(String key) {
+        if (isS3Key(key)) {
+            runAfterCommit(() -> deleteS3Object(key));
+            return;
+        }
+        runAfterCommit(() -> deleteLocalFile(key));
+    }
+
+    private void deleteLocalFile(String key) {
         try {
             Files.deleteIfExists(resolve(key));
         } catch (IOException e) {
             log.warn("Could not delete attachment file {}", key, e);
+        }
+    }
+
+    private boolean isS3Key(String key) {
+        return key != null && key.startsWith("issues/");
+    }
+
+    private void deleteS3ObjectOnRollback(String key) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status != STATUS_COMMITTED) {
+                    deleteS3Object(key);
+                }
+            }
+        });
+    }
+
+    private void runAfterCommit(Runnable action) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            action.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                action.run();
+            }
+        });
+    }
+
+    private void deleteS3Object(String key) {
+        try {
+            s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucketName).key(key).build());
+        } catch (RuntimeException exception) {
+            log.error("Could not delete issue attachment {}",exception);
         }
     }
 
