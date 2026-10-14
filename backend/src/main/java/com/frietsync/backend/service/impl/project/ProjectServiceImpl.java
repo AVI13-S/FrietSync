@@ -8,14 +8,18 @@ import com.frietsync.backend.entity.project.Project;
 import com.frietsync.backend.entity.project.ProjectMember;
 import com.frietsync.backend.entity.project.ProjectStatus;
 import com.frietsync.backend.entity.sprint.SprintAssignmentRequestStatus;
+import com.frietsync.backend.entity.sprint.SprintStatus;
 import com.frietsync.backend.entity.user.Role;
 import com.frietsync.backend.entity.user.User;
 import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.exception.ForbiddenException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.repository.chat.ChatMessageRepository;
+import com.frietsync.backend.repository.project.MilestoneRepository;
 import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
+import com.frietsync.backend.repository.project.ReleaseIssueRepository;
+import com.frietsync.backend.repository.project.ReleaseRepository;
 import com.frietsync.backend.repository.sprint.SprintAssignmentRequestRepository;
 import com.frietsync.backend.repository.sprint.SprintRepository;
 import com.frietsync.backend.repository.user.UserRepository;
@@ -37,8 +41,11 @@ public class ProjectServiceImpl implements ProjectService {
     private final UserRepository userRepository;
     private final ProjectMemberRepository projectMemberRepository;
     private final ChatMessageRepository chatMessageRepository;
+    private final MilestoneRepository milestoneRepository;
     private final SprintRepository sprintRepository;
     private final SprintAssignmentRequestRepository sprintAssignmentRequestRepository;
+    private final ReleaseRepository releaseRepository;
+    private final ReleaseIssueRepository releaseIssueRepository;
     private final IssueService issueService;
 
     @Override
@@ -47,7 +54,7 @@ public class ProjectServiceImpl implements ProjectService {
         project.setCreatedBy(userId);
         project.setAdminId(userId);
         apply(project, request);
-        return ProjectResponse.fromEntity(projectRepository.save(project));
+        return toResponse(projectRepository.save(project));
     }
 
     private UUID findProjectManagerId(String email) {
@@ -63,9 +70,11 @@ public class ProjectServiceImpl implements ProjectService {
     }
     @Override
     public List<ProjectResponse> myProjects(UUID userId) {
-        return projectRepository.findAllForUser(userId).stream()
-                .map(ProjectResponse::fromEntity)
-                .toList();
+        List<ProjectResponse> responses = new ArrayList<>();
+        for (Project project : projectRepository.findAllForUser(userId)) {
+            responses.add(toResponse(project));
+        }
+        return responses;
     }
     @Override
     public ProjectResponse get(UUID projectId, UUID userId) {
@@ -73,7 +82,7 @@ public class ProjectServiceImpl implements ProjectService {
         if (!isInvolved(project, userId)) {
             throw new ForbiddenException("You don't have access to this project");
         }
-        return ProjectResponse.fromEntity(project);
+        return toResponse(project);
     }
 
     @Override
@@ -85,7 +94,18 @@ public class ProjectServiceImpl implements ProjectService {
             throw new ForbiddenException("Only the admin or project manager can edit this project");
         }
         apply(project, request);
-        return ProjectResponse.fromEntity(projectRepository.save(project));
+        return toResponse(projectRepository.save(project));
+    }
+
+    private ProjectResponse toResponse(Project project) {
+        long totalSprints = sprintRepository.countByProjectId(project.getId());
+        long completedSprints = sprintRepository.countByProjectIdAndStatus(
+                project.getId(), SprintStatus.COMPLETED);
+        double progress = 0;
+        if (totalSprints > 0) {
+            progress = completedSprints * 100.0 / totalSprints;
+        }
+        return ProjectResponse.fromEntity(project, progress);
     }
 
     @Override
@@ -99,6 +119,11 @@ public class ProjectServiceImpl implements ProjectService {
         sprintRepository.deleteByProjectId(projectId);
         issueService.deleteAllForProject(projectId);
         chatMessageRepository.deleteByProjectId(projectId);
+        for (var release : releaseRepository.findByProjectIdOrderByReleaseDateAsc(projectId)) {
+            releaseIssueRepository.deleteByReleaseId(release.getId());
+        }
+        releaseRepository.deleteByProjectId(projectId);
+        milestoneRepository.deleteByProjectId(projectId);
         projectMemberRepository.deleteAll(projectMemberRepository.findByProjectId(projectId));
         projectRepository.delete(project);
     }

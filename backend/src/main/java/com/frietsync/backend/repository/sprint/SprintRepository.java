@@ -1,6 +1,7 @@
 package com.frietsync.backend.repository.sprint;
 
 import com.frietsync.backend.entity.sprint.Sprint;
+import com.frietsync.backend.entity.sprint.SprintStatus;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -17,6 +18,16 @@ public interface SprintRepository extends JpaRepository<Sprint, UUID> {
     Optional<Sprint> findByIdForUpdate(@Param("sprintId") UUID sprintId);
 
     List<Sprint> findByProjectId(UUID projectId);
+
+    List<Sprint> findByMilestoneId(UUID milestoneId);
+
+    long countByProjectId(UUID projectId);
+
+    long countByProjectIdAndStatus(UUID projectId, SprintStatus status);
+
+    long countByMilestoneId(UUID milestoneId);
+
+    long countByMilestoneIdAndStatus(UUID milestoneId, SprintStatus status);
 
     boolean existsByProjectIdAndAssignedContributorId(UUID projectId, UUID assignedContributorId);
 
