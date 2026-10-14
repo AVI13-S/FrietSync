@@ -10,6 +10,7 @@ import com.frietsync.backend.exception.ForbiddenException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.repository.issue.IssueAttachmentRepository;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
+import com.frietsync.backend.service.impl.storage.S3UploadValidator;
 import com.frietsync.backend.service.issue.IssueAttachmentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,7 +25,6 @@ import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
@@ -32,7 +32,6 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -44,10 +43,12 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class IssueAttachmentServiceImpl implements IssueAttachmentService {
 
+    private static final long MAX_ATTACHMENT_SIZE = 25L * 1024 * 1024;
     private final IssueAttachmentRepository attachmentRepository;
     private final ProjectAccess access;
     private final IssueHistoryRecorder history;
     private final S3Client s3Client;
+    private final S3ObjectCleanupService cleanupService;
 
     @Value("${app.storage.path:./uploads}")
     private String storagePath;
@@ -62,24 +63,23 @@ public class IssueAttachmentServiceImpl implements IssueAttachmentService {
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("File is empty");
         }
+        if (file.getSize() > MAX_ATTACHMENT_SIZE) {
+            throw new BadRequestException("Issue attachments cannot exceed 25 MB");
+        }
         if (bucketName == null || bucketName.isBlank()) {
             throw new BadRequestException("S3 bucket is not configured");
         }
 
+        String fileName = sanitize(file.getOriginalFilename());
+        String contentType = S3UploadValidator.validateIssueAttachment(file, fileName);
         String key = "issues/" + issue.getProjectId() + "/" + issueId + "/" + UUID.randomUUID();
-        String contentType = file.getContentType();
-        if (contentType == null || contentType.length() > 100) {
-            contentType = "application/octet-stream";
-        }
         try {
-            try (InputStream input = file.getInputStream()) {
-                s3Client.putObject(PutObjectRequest.builder()
-                                .bucket(bucketName)
-                                .key(key)
-                                .contentType(contentType)
-                                .build(),
-                        RequestBody.fromInputStream(input, file.getSize()));
-            }
+            s3Client.putObject(PutObjectRequest.builder()
+                            .bucket(bucketName)
+                            .key(key)
+                            .contentType(contentType)
+                            .build(),
+                    RequestBody.fromBytes(file.getBytes()));
         } catch (IOException e) {
             log.error("Could not read issue attachment for S3 upload", e);
             throw new IllegalStateException("Could not read the uploaded file");
@@ -89,7 +89,7 @@ public class IssueAttachmentServiceImpl implements IssueAttachmentService {
         IssueAttachment attachment = new IssueAttachment();
         attachment.setIssueId(issueId);
         attachment.setUploadedBy(userId);
-        attachment.setFileName(sanitize(file.getOriginalFilename()));
+        attachment.setFileName(fileName);
         attachment.setContentType(contentType);
         attachment.setSizeBytes(file.getSize());
         attachment.setStorageKey(key);
@@ -185,7 +185,7 @@ public class IssueAttachmentServiceImpl implements IssueAttachmentService {
 
     private void deleteFile(String key) {
         if (isS3Key(key)) {
-            runAfterCommit(() -> deleteS3Object(key));
+            cleanupService.enqueue(bucketName, key);
             return;
         }
         runAfterCommit(() -> deleteLocalFile(key));
@@ -211,7 +211,7 @@ public class IssueAttachmentServiceImpl implements IssueAttachmentService {
             @Override
             public void afterCompletion(int status) {
                 if (status != STATUS_COMMITTED) {
-                    deleteS3Object(key);
+                    cleanupService.enqueue(bucketName, key);
                 }
             }
         });
@@ -228,14 +228,6 @@ public class IssueAttachmentServiceImpl implements IssueAttachmentService {
                 action.run();
             }
         });
-    }
-
-    private void deleteS3Object(String key) {
-        try {
-            s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucketName).key(key).build());
-        } catch (RuntimeException exception) {
-            log.error("Could not delete issue attachment {}",exception);
-        }
     }
 
     private String sanitize(String original) {

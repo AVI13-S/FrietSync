@@ -17,16 +17,17 @@ import com.frietsync.backend.repository.issue.IssueRepository;
 import com.frietsync.backend.repository.project.ReleaseIssueRepository;
 import com.frietsync.backend.repository.project.ReleaseRepository;
 import com.frietsync.backend.service.project.ReleaseService;
+import com.frietsync.backend.service.impl.issue.S3ObjectCleanupService;
+import com.frietsync.backend.service.impl.storage.S3UploadValidator;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
@@ -47,6 +48,7 @@ public class ReleaseServiceImpl implements ReleaseService {
     private final ProjectMemberRepository projectMemberRepository;
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
+    private final S3ObjectCleanupService cleanupService;
 
     @Value("${aws.s3.bucket:}")
     private String bucketName;
@@ -86,7 +88,7 @@ public class ReleaseServiceImpl implements ReleaseService {
         Release release = findRelease(releaseId);
         requireManager(findProject(release.getProjectId()), userId);
         releaseIssueRepository.deleteByReleaseId(releaseId);
-        runAfterCommit(() -> deleteStoredFile(release.getReleaseFileKey()));
+        enqueueStoredFileDeletion(release.getReleaseFileKey());
         releaseRepository.delete(release);
     }
 
@@ -96,7 +98,7 @@ public class ReleaseServiceImpl implements ReleaseService {
         List<Release> releases = releaseRepository.findByProjectIdOrderByReleaseDateAsc(projectId);
         for (Release release : releases) {
             releaseIssueRepository.deleteByReleaseId(release.getId());
-            runAfterCommit(() -> deleteStoredFile(release.getReleaseFileKey()));
+            enqueueStoredFileDeletion(release.getReleaseFileKey());
         }
         releaseRepository.deleteAll(releases);
     }
@@ -142,25 +144,25 @@ public class ReleaseServiceImpl implements ReleaseService {
 
         String originalName = file.getOriginalFilename();
         String safeName = originalName == null ? "release-file" : originalName.replaceAll("[^A-Za-z0-9._-]", "_");
-        String key = "releases/" + releaseId + "/" + UUID.randomUUID() + "-" + safeName;
-        String contentType = file.getContentType();
-        if (contentType == null || contentType.isBlank()) {
-            contentType = "application/octet-stream";
+        if (safeName.length() > 255) {
+            safeName = safeName.substring(safeName.length() - 255);
         }
-        try {
+        String contentType = S3UploadValidator.validateReleaseFile(file, safeName);
+        String key = "releases/" + releaseId + "/" + UUID.randomUUID() + "-" + safeName;
+        try (java.io.InputStream input = file.getInputStream()) {
             s3Client.putObject(PutObjectRequest.builder()
                             .bucket(bucketName)
                             .key(key)
                             .contentType(contentType)
                             .build(),
-                    RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
+                    RequestBody.fromInputStream(input, file.getSize()));
         } catch (java.io.IOException exception) {
             throw new BadRequestException("Could not read the uploaded release file");
         }
         deleteS3ObjectOnRollback(key);
         String previousKey = release.getReleaseFileKey();
         release.setReleaseFileKey(key);
-        runAfterCommit(() -> deleteStoredFile(previousKey));
+        enqueueStoredFileDeletion(previousKey);
         return response(releaseRepository.save(release));
     }
 
@@ -190,13 +192,12 @@ public class ReleaseServiceImpl implements ReleaseService {
         return response;
     }
 
-    private void deleteStoredFile(String key) {
-        if (key != null && !key.isBlank() && bucketName != null && !bucketName.isBlank()) {
-            try {
-                s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucketName).key(key).build());
-            } catch (RuntimeException exception) {
-                log.error("Could not delete S3 release file {}", key, exception);
+    private void enqueueStoredFileDeletion(String key) {
+        if (key != null && !key.isBlank()) {
+            if (bucketName == null || bucketName.isBlank()) {
+                throw new IllegalStateException("S3 bucket is not configured for release file cleanup");
             }
+            cleanupService.enqueue(bucketName, key);
         }
     }
 
@@ -208,21 +209,8 @@ public class ReleaseServiceImpl implements ReleaseService {
             @Override
             public void afterCompletion(int status) {
                 if (status != STATUS_COMMITTED) {
-                    deleteStoredFile(key);
+                    cleanupService.enqueue(bucketName, key);
                 }
-            }
-        });
-    }
-
-    private void runAfterCommit(Runnable action) {
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            action.run();
-            return;
-        }
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                action.run();
             }
         });
     }
