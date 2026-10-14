@@ -115,7 +115,13 @@ public class IssueServiceImpl implements IssueService {
     public IssueResponse update(UUID issueId, IssueUpdateRequest r, UUID userId) {
         Issue issue = access.issue(issueId);
         Project project = access.project(issue.getProjectId());
-        access.require(project, userId, Role.PROJECT_MANAGER, Role.TEAM_LEAD);
+        Role role = access.requireMember(project, userId);
+        boolean canEdit = role == Role.PROJECT_MANAGER
+                || role == Role.TEAM_LEAD
+                || (role == Role.REPORTER && userId.equals(issue.getCreatedBy()));
+        if (!canEdit) {
+            throw new ForbiddenException("Only the project manager, team lead or issue-creating reporter can edit this issue");
+        }
         if (issue.getStatus() == IssueStatus.CLOSED) {
             throw new BadRequestException("Closed issues cannot be edited");
         }
@@ -182,13 +188,9 @@ public class IssueServiceImpl implements IssueService {
         Role role = access.requireMember(project, userId);
 
         boolean assignee = assigneeRepository.existsByIssueIdAndUserId(issueId, userId);
-        boolean allowed = role == Role.ADMIN
-                || role == Role.PROJECT_MANAGER
-                || role == Role.TEAM_LEAD
-                || (role == Role.CONTRIBUTOR && assignee);
+        boolean allowed = role == Role.CONTRIBUTOR && assignee;
         if (!allowed) {
-            throw new ForbiddenException(
-                    "Only the team lead, project manager or an assigned contributor can resolve this issue");
+            throw new ForbiddenException("Only an assigned contributor can resolve this issue");
         }
         if (issue.getStatus() == IssueStatus.RESOLVED || issue.getStatus() == IssueStatus.CLOSED) {
             throw new BadRequestException("This issue is already resolved or closed");
@@ -216,7 +218,10 @@ public class IssueServiceImpl implements IssueService {
     private IssueResponse review(UUID issueId, ReviewRequest request, UUID userId, boolean approve) {
         Issue issue = access.issue(issueId);
         Project project = access.project(issue.getProjectId());
-        access.require(project, userId, Role.PROJECT_MANAGER, Role.TEAM_LEAD);
+        Role role = access.requireMember(project, userId);
+        if (role != Role.PROJECT_MANAGER && role != Role.TEAM_LEAD && role != Role.REPORTER) {
+            throw new ForbiddenException("Only the project manager, team lead or a reporter can review this issue");
+        }
         if (issue.getStatus() != IssueStatus.RESOLVED) {
             throw new BadRequestException("Only resolved issues can be reviewed");
         }
