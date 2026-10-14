@@ -1,0 +1,246 @@
+package com.frietsync.backend.service.impl.meeting;
+
+import com.frietsync.backend.dto.meeting.CreateMeetingRequest;
+import com.frietsync.backend.dto.meeting.MeetingAttendeeResponse;
+import com.frietsync.backend.dto.meeting.MeetingResponse;
+import com.frietsync.backend.dto.meeting.UpdateMeetingRequest;
+import com.frietsync.backend.entity.meeting.Meeting;
+import com.frietsync.backend.entity.meeting.MeetingAttendee;
+import com.frietsync.backend.entity.project.Project;
+import com.frietsync.backend.entity.project.ProjectMember;
+import com.frietsync.backend.entity.user.Role;
+import com.frietsync.backend.entity.user.User;
+import com.frietsync.backend.exception.BadRequestException;
+import com.frietsync.backend.exception.ForbiddenException;
+import com.frietsync.backend.exception.ResourceNotFoundException;
+import com.frietsync.backend.repository.meeting.MeetingAttendeeRepository;
+import com.frietsync.backend.repository.meeting.MeetingRepository;
+import com.frietsync.backend.repository.project.ProjectMemberRepository;
+import com.frietsync.backend.repository.project.ProjectRepository;
+import com.frietsync.backend.repository.user.UserRepository;
+import com.frietsync.backend.service.meeting.MeetingService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+@Service
+@RequiredArgsConstructor
+public class MeetingServiceImpl implements MeetingService {
+
+    private final MeetingRepository meetingRepository;
+    private final MeetingAttendeeRepository attendeeRepository;
+    private final ProjectRepository projectRepository;
+    private final ProjectMemberRepository projectMemberRepository;
+    private final UserRepository userRepository;
+
+    @Override
+    @Transactional
+    public MeetingResponse create(UUID projectId, UUID organizerId, CreateMeetingRequest request) {
+        Project project = findProject(projectId);
+        if (!canSchedule(project, organizerId)) {
+            throw new ForbiddenException("Only the project manager or team lead can schedule meetings");
+        }
+        validateMeetingTimes(request.getStartAt(), request.getEndAt());
+        List<UUID> attendeeIds = normalizeAttendeeIds(request.getAttendeeIds());
+        validateProjectAttendees(project, attendeeIds);
+
+        Meeting meeting = new Meeting();
+        meeting.setProjectId(projectId);
+        meeting.setOrganizerId(organizerId);
+        meeting.setTitle(request.getTitle().trim());
+        meeting.setAgenda(request.getAgenda().trim());
+        meeting.setStartAt(request.getStartAt());
+        meeting.setEndAt(request.getEndAt());
+        Meeting savedMeeting = meetingRepository.save(meeting);
+        for (UUID attendeeId : attendeeIds) {
+            attendeeRepository.save(newAttendee(savedMeeting.getId(), attendeeId));
+        }
+        return toResponse(savedMeeting);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MeetingResponse> getMyMeetings(UUID userId) {
+        Map<UUID, Meeting> meetings = new HashMap<>();
+        for (Meeting meeting : meetingRepository.findByOrganizerIdOrderByStartAtAsc(userId)) {
+            meetings.put(meeting.getId(), meeting);
+        }
+
+        List<UUID> invitedMeetingIds = new ArrayList<>();
+        for (MeetingAttendee attendee : attendeeRepository.findByUserId(userId)) {
+            invitedMeetingIds.add(attendee.getMeetingId());
+        }
+        if (!invitedMeetingIds.isEmpty()) {
+            for (Meeting meeting : meetingRepository.findByIdInOrderByStartAtAsc(invitedMeetingIds)) {
+                meetings.put(meeting.getId(), meeting);
+            }
+        }
+
+        List<Meeting> orderedMeetings = new ArrayList<>(meetings.values());
+        orderedMeetings.sort(Comparator.comparing(Meeting::getStartAt));
+        List<MeetingResponse> responses = new ArrayList<>();
+        for (Meeting meeting : orderedMeetings) {
+            responses.add(toResponse(meeting));
+        }
+        return responses;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MeetingResponse> getProjectMeetings(UUID projectId, UUID userId) {
+        Project project = findProject(projectId);
+        if (!isProjectParticipant(project, userId)) {
+            throw new ForbiddenException("You don't have access to this project's meetings");
+        }
+
+        List<MeetingResponse> responses = new ArrayList<>();
+        for (Meeting meeting : meetingRepository.findByProjectIdOrderByStartAtAsc(projectId)) {
+            responses.add(toResponse(meeting));
+        }
+        return responses;
+    }
+
+    @Override
+    @Transactional
+    public MeetingResponse update(UUID meetingId, UUID userId, UpdateMeetingRequest request) {
+        Meeting meeting = findMeeting(meetingId);
+        Project project = findProject(meeting.getProjectId());
+        if (!isProjectManager(project, userId)) {
+            throw new ForbiddenException("Only the project manager can edit a meeting");
+        }
+
+        if (request.getTitle() != null) {
+            if (!StringUtils.hasText(request.getTitle()) || request.getTitle().length() > 200) {
+                throw new BadRequestException("Meeting title must contain 1 to 200 characters");
+            }
+            meeting.setTitle(request.getTitle().trim());
+        }
+        if (request.getAgenda() != null) {
+            if (!StringUtils.hasText(request.getAgenda()) || request.getAgenda().length() > 4000) {
+                throw new BadRequestException("Meeting agenda must contain 1 to 4000 characters");
+            }
+            meeting.setAgenda(request.getAgenda().trim());
+        }
+
+        Instant startAt = request.getStartAt() == null ? meeting.getStartAt() : request.getStartAt();
+        Instant endAt = request.getEndAt() == null ? meeting.getEndAt() : request.getEndAt();
+        validateMeetingTimes(startAt, endAt);
+        meeting.setStartAt(startAt);
+        meeting.setEndAt(endAt);
+
+        if (request.getAttendeeIds() != null) {
+            List<UUID> attendeeIds = normalizeAttendeeIds(request.getAttendeeIds());
+            validateProjectAttendees(project, attendeeIds);
+            attendeeRepository.deleteByMeetingId(meetingId);
+            for (UUID attendeeId : attendeeIds) {
+                attendeeRepository.save(newAttendee(meetingId, attendeeId));
+            }
+        }
+        return toResponse(meetingRepository.save(meeting));
+    }
+
+    @Override
+    @Transactional
+    public void cancel(UUID meetingId, UUID userId) {
+        Meeting meeting = findMeeting(meetingId);
+        Project project = findProject(meeting.getProjectId());
+        if (!meeting.getOrganizerId().equals(userId) && !isProjectManager(project, userId)) {
+            throw new ForbiddenException("Only the organizer or project manager can cancel a meeting");
+        }
+        attendeeRepository.deleteByMeetingId(meetingId);
+        meetingRepository.delete(meeting);
+    }
+
+    private MeetingAttendee newAttendee(UUID meetingId, UUID userId) {
+        MeetingAttendee attendee = new MeetingAttendee();
+        attendee.setMeetingId(meetingId);
+        attendee.setUserId(userId);
+        return attendee;
+    }
+
+    private MeetingResponse toResponse(Meeting meeting) {
+        List<MeetingAttendeeResponse> attendees = new ArrayList<>();
+        for (MeetingAttendee attendee : attendeeRepository.findByMeetingId(meeting.getId())) {
+            attendees.add(MeetingAttendeeResponse.fromEntity(attendee));
+        }
+        return MeetingResponse.fromEntity(meeting, attendees);
+    }
+
+    private Meeting findMeeting(UUID meetingId) {
+        return meetingRepository.findById(meetingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Meeting not found"));
+    }
+
+    private Project findProject(UUID projectId) {
+        return projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
+    }
+
+    private void validateMeetingTimes(Instant startAt, Instant endAt) {
+        if (startAt == null || endAt == null || !endAt.isAfter(startAt)) {
+            throw new BadRequestException("Meeting end time must be after its start time");
+        }
+    }
+
+    private List<UUID> normalizeAttendeeIds(List<UUID> attendeeIds) {
+        if (attendeeIds == null) {
+            throw new BadRequestException("Attendee IDs are required");
+        }
+        List<UUID> uniqueAttendeeIds = new ArrayList<>();
+        for (UUID attendeeId : attendeeIds) {
+            if (!uniqueAttendeeIds.contains(attendeeId)) {
+                uniqueAttendeeIds.add(attendeeId);
+            }
+        }
+        return uniqueAttendeeIds;
+    }
+
+    private void validateProjectAttendees(Project project, List<UUID> attendeeIds) {
+        for (UUID attendeeId : attendeeIds) {
+            if (attendeeId == null || !userRepository.existsById(attendeeId)
+                    || !isProjectParticipant(project, attendeeId)) {
+                throw new BadRequestException("Every attendee must be an existing project participant");
+            }
+        }
+    }
+
+    private boolean isProjectParticipant(Project project, UUID userId) {
+        if (userId == null) {
+            return false;
+        }
+        if (userId.equals(project.getCreatedBy())
+                || userId.equals(project.getAdminId())
+                || userId.equals(project.getProjectManagerId())
+                || userId.equals(project.getTeamLeadId())) {
+            return true;
+        }
+        return projectMemberRepository.existsByProjectIdAndUserId(project.getId(), userId);
+    }
+
+    private boolean canSchedule(Project project, UUID userId) {
+        if (isProjectManager(project, userId) || userId != null && userId.equals(project.getTeamLeadId())) {
+            return true;
+        }
+        ProjectMember member = projectMemberRepository
+                .findByProjectIdAndUserId(project.getId(), userId)
+                .orElse(null);
+        return member != null && member.getRole() == Role.TEAM_LEAD;
+    }
+
+    private boolean isProjectManager(Project project, UUID userId) {
+        if (userId == null || !userId.equals(project.getProjectManagerId())) {
+            return false;
+        }
+        User user = userRepository.findById(userId).orElse(null);
+        return user != null && user.getRole() == Role.PROJECT_MANAGER;
+    }
+}
