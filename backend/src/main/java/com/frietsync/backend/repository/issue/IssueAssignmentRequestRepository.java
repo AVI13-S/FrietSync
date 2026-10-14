@@ -12,6 +12,9 @@ public interface IssueAssignmentRequestRepository extends JpaRepository<IssueAss
 
     Optional<IssueAssignmentRequest> findByIssueIdAndUserId(UUID issueId, UUID userId);
 
+    List<IssueAssignmentRequest> findByProjectIdAndUserIdAndStatus(
+            UUID projectId, UUID userId, AssignmentRequestStatus status);
+
     List<IssueAssignmentRequest> findByProjectIdAndStatusOrderByCreatedAtAsc(
             UUID projectId, AssignmentRequestStatus status);
 

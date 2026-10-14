@@ -12,6 +12,8 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
 
     Page<Issue> findByProjectIdAndDeletedAtIsNull(UUID projectId, Pageable pageable);
 
+    List<Issue> findByProjectIdAndDeletedAtIsNull(UUID projectId);
+
     List<Issue> findByProjectIdOrderByCreatedAtDesc(UUID projectId);
 
     List<Issue> findByProjectId(UUID projectId);

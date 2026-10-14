@@ -7,6 +7,11 @@ import com.frietsync.backend.dto.project.ProjectResponse;
 import com.frietsync.backend.entity.project.Project;
 import com.frietsync.backend.entity.project.ProjectMember;
 import com.frietsync.backend.entity.project.ProjectStatus;
+import com.frietsync.backend.entity.issue.AssignmentRequestStatus;
+import com.frietsync.backend.entity.issue.IssueAssignee;
+import com.frietsync.backend.entity.issue.Issue;
+import com.frietsync.backend.entity.issue.IssueAssignmentRequest;
+import com.frietsync.backend.entity.issue.IssueHistoryAction;
 import com.frietsync.backend.entity.sprint.SprintAssignmentRequestStatus;
 import com.frietsync.backend.entity.sprint.SprintStatus;
 import com.frietsync.backend.entity.user.Role;
@@ -18,6 +23,9 @@ import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.repository.chat.ChatMessageRepository;
 import com.frietsync.backend.repository.meeting.MeetingAttendeeRepository;
 import com.frietsync.backend.repository.meeting.MeetingRepository;
+import com.frietsync.backend.repository.issue.IssueAssigneeRepository;
+import com.frietsync.backend.repository.issue.IssueAssignmentRequestRepository;
+import com.frietsync.backend.repository.issue.IssueRepository;
 import com.frietsync.backend.repository.project.MilestoneRepository;
 import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
@@ -28,10 +36,12 @@ import com.frietsync.backend.repository.workspace.WorkspaceRepository;
 import com.frietsync.backend.service.project.ProjectService;
 import com.frietsync.backend.service.project.ReleaseService;
 import com.frietsync.backend.service.issue.IssueService;
+import com.frietsync.backend.service.impl.issue.IssueHistoryRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Stream;
@@ -42,6 +52,10 @@ public class ProjectServiceImpl implements ProjectService {
 
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
+    private final IssueRepository issueRepository;
+    private final IssueAssigneeRepository issueAssigneeRepository;
+    private final IssueAssignmentRequestRepository issueAssignmentRequestRepository;
+    private final IssueHistoryRecorder issueHistoryRecorder;
     private final WorkspaceRepository workspaceRepository;
     private final ProjectMemberRepository projectMemberRepository;
     private final ChatMessageRepository chatMessageRepository;
@@ -261,10 +275,45 @@ public class ProjectServiceImpl implements ProjectService {
         }
         sprintAssignmentRequestRepository.deletePendingForProjectMember(
                 projectId, memberUserId, SprintAssignmentRequestStatus.PENDING);
+        clearIssueAssignments(projectId, memberUserId, userId);
+        rejectPendingIssueRequests(projectId, memberUserId, userId);
         projectMemberRepository.delete(member);
 
         updateTeamSize(project);
         projectRepository.save(project);
+    }
+
+    private void clearIssueAssignments(UUID projectId, UUID memberUserId, UUID actorId) {
+        List<UUID> issueIds = issueRepository.findByProjectIdAndDeletedAtIsNull(projectId).stream()
+                .map(Issue::getId)
+                .toList();
+        if (issueIds.isEmpty()) {
+            return;
+        }
+        List<IssueAssignee> assignments = issueAssigneeRepository.findByIssueIdIn(issueIds).stream()
+                .filter(assignment -> memberUserId.equals(assignment.getUserId()))
+                .toList();
+        for (IssueAssignee assignment : assignments) {
+            issueHistoryRecorder.record(assignment.getIssueId(), actorId,
+                    IssueHistoryAction.ASSIGNEE_REMOVED, "assignee", memberUserId, null,
+                    "Project member was removed");
+        }
+        issueAssigneeRepository.deleteAll(assignments);
+    }
+
+    private void rejectPendingIssueRequests(UUID projectId, UUID memberUserId, UUID actorId) {
+        List<IssueAssignmentRequest> requests =
+                issueAssignmentRequestRepository.findByProjectIdAndUserIdAndStatus(
+                        projectId, memberUserId, AssignmentRequestStatus.PENDING);
+        for (com.frietsync.backend.entity.issue.IssueAssignmentRequest request : requests) {
+            request.setStatus(AssignmentRequestStatus.REJECTED);
+            request.setDecidedBy(actorId);
+            request.setDecidedAt(Instant.now());
+            issueAssignmentRequestRepository.save(request);
+            issueHistoryRecorder.record(request.getIssueId(), actorId,
+                    IssueHistoryAction.ASSIGNMENT_REJECTED, "assignee", null, memberUserId,
+                    "Project member was removed");
+        }
     }
 
     private MemberResponse toMemberResponse(User user, Role role) {
