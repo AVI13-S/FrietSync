@@ -141,6 +141,20 @@ public class GlobalExceptionHandler {
         );
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorResponse);
     }
+
+    @ExceptionHandler(StorageServiceException.class)
+    public ResponseEntity<ErrorResponse> handleStorageServiceException(
+            StorageServiceException ex,
+            HttpServletRequest request) {
+        ErrorResponse errorResponse = new ErrorResponse(
+                Instant.now(),
+                HttpStatus.BAD_GATEWAY.value(),
+                HttpStatus.BAD_GATEWAY.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(errorResponse);
+    }
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorResponse> handleUnreadableBody(
             HttpMessageNotReadableException ex,

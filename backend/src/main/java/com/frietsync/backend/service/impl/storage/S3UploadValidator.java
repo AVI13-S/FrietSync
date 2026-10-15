@@ -1,3 +1,4 @@
+
 package com.frietsync.backend.service.impl.storage;
 
 import com.frietsync.backend.exception.BadRequestException;
@@ -23,8 +24,8 @@ public final class S3UploadValidator {
             "7z", "appimage"
     );
 
-    private S3UploadValidator() {
-    }
+    private static final Set<String> PROFILE_PICTURE_EXTENSIONS =
+            Set.of("png", "jpg", "jpeg", "webp");
 
     public static String validateIssueAttachment(
             MultipartFile file, String fileName) {
@@ -34,6 +35,31 @@ public final class S3UploadValidator {
     public static String validateReleaseFile(
             MultipartFile file, String fileName) {
         return validate(fileName, RELEASE_EXTENSIONS);
+    }
+
+    public static String validateProfilePicture(
+            MultipartFile file, String fileName) {
+
+        if (file == null || file.isEmpty()) {
+            throw new BadRequestException(
+                    "Profile picture must not be empty");
+        }
+
+        if (file.getSize() > 5L * 1024 * 1024) {
+            throw new BadRequestException(
+                    "Profile picture cannot exceed 5 MB");
+        }
+
+        String extension = validate(
+                fileName, PROFILE_PICTURE_EXTENSIONS);
+
+        return switch (extension) {
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "png" -> "image/png";
+            case "webp" -> "image/webp";
+            default -> throw new BadRequestException(
+                    "Unsupported profile picture type");
+        };
     }
 
     private static String validate(

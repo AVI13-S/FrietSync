@@ -43,4 +43,22 @@ public class User extends BaseEntity {
 
     @Column(nullable = false)
     private boolean active = true;
+
+    @Column(length = 2000)
+    private String bio;
+
+    @Column(name = "job_title", length = 200)
+    private String jobTitle;
+
+    @Column(name = "github_url", length = 200)
+    private String githubUrl;
+
+    @Column(name = "linkedin_url", length = 200)
+    private String linkedinUrl;
+
+    @Column(name = "portfolio_url", length = 200)
+    private String portfolioUrl;
+
+    @Column(name = "profile_picture_key", length = 2000)
+    private String profilePictureKey;
 }
