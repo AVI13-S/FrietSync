@@ -5,11 +5,12 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.time.LocalDate;
+import java.util.UUID;
 
 @Data
 public class CreateSprintRequest {
 
-    @NotBlank(message="Sprint must have a Name")
+    @NotBlank(message = "Sprint must have a Name")
     private String name;
 
     @NotBlank(message = "Sprint goal is required")
@@ -20,4 +21,6 @@ public class CreateSprintRequest {
 
     @NotNull(message = "End date is required")
     private LocalDate endDate;
+
+    private UUID milestoneId;
 }

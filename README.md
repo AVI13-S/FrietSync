@@ -34,7 +34,7 @@ This is the authentication part of the FrietSync backend. It includes signup, lo
 
 ## APIs
 
-Authentication, invite, and health routes use the `/api/v1` prefix. Sprint routes currently do not have that prefix in `SprintController`.
+The backend routes are grouped under `/api/v1`, with additional project-scoped endpoints for sprints, issues, meetings, and chat.
 
 | Method | URL | Access | Request body / notes |
 |---|---|---|---|
@@ -60,7 +60,98 @@ Authentication, invite, and health routes use the `/api/v1` prefix. Sprint route
 | POST | `/sprints/{id}/complete` | Authenticated | Completes an active sprint |
 | DELETE | `/sprints/{id}` | Authenticated | Deletes a sprint |
 
-Protected routes use `Authorization: Bearer <access-token>`, except refresh and logout, which use the `refreshToken` HTTP-only cookie set during login. The sprint endpoints are currently mapped without `/api/v1`; add that prefix in the controller if the API is intended to use it consistently.
+## Additional backend endpoints
+
+The backend also exposes authenticated routes for workspaces, projects, issues, meetings, polls, releases, milestones, notifications, and chat. Unless specifically listed as public above, these endpoints require a valid access token.
+
+### Workspaces and projects
+
+| Method | URL | Access | Notes |
+|---|---|---|---|
+| POST | `/api/v1/workspaces` | Authenticated | Create a workspace |
+| GET | `/api/v1/workspaces/me` | Authenticated | Get the current workspace |
+| GET | `/api/v1/workspaces/{workspaceId}` | Authenticated | Get workspace details |
+| PATCH | `/api/v1/workspaces/{workspaceId}` | Authenticated | Update a workspace |
+| GET | `/api/v1/workspaces/{workspaceId}/members` | Authenticated | List workspace members |
+| POST | `/api/v1/projects` | Authenticated | Create a project |
+| GET | `/api/v1/projects/me` | Authenticated | List the user's projects |
+| GET | `/api/v1/projects/{projectId}` | Authenticated | Get a project |
+| PUT | `/api/v1/projects/{projectId}` | Authenticated | Update a project |
+| DELETE | `/api/v1/projects/{projectId}` | Authenticated | Delete a project |
+| GET | `/api/v1/projects/{projectId}/members` | Authenticated | List project members |
+| POST | `/api/v1/projects/{projectId}/members` | Authenticated | Add a project member |
+| DELETE | `/api/v1/projects/{projectId}/members/{memberUserId}` | Authenticated | Remove a project member |
+| POST | `/api/v1/projects/{projectId}/milestones` | Authenticated | Create a milestone |
+| GET | `/api/v1/projects/{projectId}/milestones` | Authenticated | List milestones |
+| PATCH | `/api/v1/milestones/{milestoneId}` | Authenticated | Update a milestone |
+| DELETE | `/api/v1/milestones/{milestoneId}` | Authenticated | Delete a milestone |
+| POST | `/api/v1/projects/{projectId}/releases` | Authenticated | Create a release |
+| GET | `/api/v1/projects/{projectId}/releases` | Authenticated | List releases |
+| PATCH | `/api/v1/releases/{releaseId}` | Authenticated | Update a release |
+| DELETE | `/api/v1/releases/{releaseId}` | Authenticated | Delete a release |
+| POST | `/api/v1/releases/{releaseId}/issues` | Authenticated | Attach issues to a release |
+| POST | `/api/v1/releases/{releaseId}/file` | Authenticated | Upload a release file |
+
+### Issues, assignments, and links
+
+| Method | URL | Access | Notes |
+|---|---|---|---|
+| POST | `/api/v1/projects/{projectId}/issues` | Authenticated | Create an issue |
+| GET | `/api/v1/projects/{projectId}/issues` | Authenticated | List project issues |
+| GET | `/api/v1/issues/{issueId}` | Authenticated | Get an issue |
+| PATCH | `/api/v1/issues/{issueId}` | Authenticated | Update an issue |
+| DELETE | `/api/v1/issues/{issueId}` | Authenticated | Delete an issue |
+| POST | `/api/v1/issues/{issueId}/resolve` | Authenticated | Resolve an issue |
+| GET | `/api/v1/issues/{issueId}/history` | Authenticated | View issue history |
+| POST | `/api/v1/issues/{issueId}/review/approve` | Authenticated | Approve an issue review |
+| POST | `/api/v1/issues/{issueId}/review/reject` | Authenticated | Reject an issue review |
+| POST | `/api/v1/issues/{issueId}/labels` | Authenticated | Add an issue label |
+| GET | `/api/v1/issues/{issueId}/labels` | Authenticated | List labels |
+| POST | `/api/v1/issues/{issueId}/assign` | Authenticated | Assign an issue directly |
+| POST | `/api/v1/issues/{issueId}/request` | Authenticated | Request issue assignment |
+| GET | `/api/v1/issues/{issueId}/request` | Authenticated | Get your assignment request |
+| DELETE | `/api/v1/issues/{issueId}/request` | Authenticated | Cancel your assignment request |
+| GET | `/api/v1/projects/{projectId}/issue-requests` | Authenticated | List assignment requests |
+| POST | `/api/v1/issues/{issueId}/issue-requests` | Authenticated | Decide on a request |
+| DELETE | `/api/v1/projects/{projectId}/issue-requests?requestId={requestId}` | Authenticated | Reject a request |
+| POST | `/api/v1/issues/{issueId}/links` | Authenticated | Create a dependency / link |
+| GET | `/api/v1/issues/{issueId}/links` | Authenticated | List issue links |
+| DELETE | `/api/v1/issue-links/{linkId}` | Authenticated | Remove an issue link |
+| GET | `/api/v1/issues/{issueId}/impact` | Authenticated | Get issue impact |
+| GET | `/api/v1/issues/{issueId}/dependencies` | Authenticated | Get issue dependencies |
+| GET | `/api/v1/projects/{projectId}/dependency-graph` | Authenticated | Get dependency graph |
+| POST | `/api/v1/issues/{issueId}/attachments` | Authenticated | Upload attached files |
+| GET | `/api/v1/issues/{issueId}/attachments` | Authenticated | List issue attachments |
+| DELETE | `/api/v1/attachments/{attachmentId}` | Authenticated | Delete an attachment |
+| GET | `/api/v1/attachments/{attachmentId}/download` | Authenticated | Download an attachment |
+
+### Sprint, meeting, poll, notifications, and chat
+
+| Method | URL | Access | Notes |
+|---|---|---|---|
+| POST | `/api/v1/projects/{projectId}/polls` | Authenticated | Create a poll |
+| GET | `/api/v1/projects/{projectId}/polls` | Authenticated | List project polls |
+| GET | `/api/v1/polls/{pollId}` | Authenticated | Get a poll |
+| PUT | `/api/v1/polls/{pollId}/votes` | Authenticated | Cast a vote |
+| POST | `/api/v1/polls/{pollId}/close` | Authenticated | Close a poll |
+| POST | `/api/v1/projects/{projectId}/meetings` | Authenticated | Schedule a meeting |
+| GET | `/api/v1/meetings` | Authenticated | List your meetings |
+| GET | `/api/v1/projects/{projectId}/meetings` | Authenticated | List project meetings |
+| PATCH | `/api/v1/meetings/{meetingId}` | Authenticated | Update a meeting |
+| DELETE | `/api/v1/meetings/{meetingId}` | Authenticated | Cancel a meeting |
+| GET | `/api/v1/projects/{projectId}/chat/messages?limit=50` | Authenticated | Fetch recent project chat messages |
+| POST | `/app/projects/{projectId}/chat` | Authenticated | WebSocket destination for chat messages |
+| GET | `/api/v1/notifications` | Authenticated | List notifications |
+| POST | `/api/v1/notifications/{id}/read` | Authenticated | Mark a notification as read |
+| POST | `/api/v1/notifications/read-all` | Authenticated | Mark all notifications as read |
+| GET | `/api/v1/notifications/unread-count` | Authenticated | Get unread count |
+| GET | `/api/v1/notifications/preferences` | Authenticated | Get notification preferences |
+| PUT | `/api/v1/notifications/preferences` | Authenticated | Update notification preferences |
+| DELETE | `/api/v1/users/workspace/leave` | Authenticated | Leave the current workspace |
+
+Protected routes use `Authorization: ******` except for refresh and logout, which use the `refreshToken` HTTP-only cookie set during login.
+
+Protected routes use `Authorization: Bearer <access-token>`, except refresh and logout, which use the `refreshToken` HTTP-only cookie set during login. 
 
 `GET /api/v1/check` returns:
 

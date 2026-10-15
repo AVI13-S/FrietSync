@@ -136,7 +136,6 @@ public class InviteServiceImpl implements InviteService {
         String inviteType = switch (purpose) {
             case WORKSPACE_INVITE -> invite.getRole().name();
             case OWNERSHIP_TRANSFER -> "OWNERSHIP_TRANSFER";
-            case PROJECT_INVITE -> "PROJECT_INVITE";
         };
 
         emailService.sendInviteMail(email, inviteType);
@@ -224,10 +223,6 @@ public class InviteServiceImpl implements InviteService {
         }
 
         switch (invite.getPurpose()) {
-            case PROJECT_INVITE -> {
-                return toResponse(invite);
-            }
-
             case WORKSPACE_INVITE -> {
                 if (user.getWorkspaceId() != null) {
                     throw new BadRequestException(

@@ -26,12 +26,13 @@ public class ProjectResponse {
     private Instant updatedAt;
     private int issueCounter;
     private int sprintCounter;
+    private double progressPercentage;
     private int teamSize;
     private UUID adminId;
     private UUID projectManagerId;
     private UUID teamLeadId;
 
-    public static ProjectResponse fromEntity(Project p) {
+    public static ProjectResponse fromEntity(Project p, double progressPercentage) {
         return ProjectResponse.builder()
                 .id(p.getId())
                 .workspaceId(p.getWorkspaceId())
@@ -46,6 +47,7 @@ public class ProjectResponse {
                 .updatedAt(p.getUpdatedAt())
                 .issueCounter(p.getIssueCounter())
                 .sprintCounter(p.getSprintCounter())
+                .progressPercentage(progressPercentage)
                 .teamSize(p.getTeamSize())
                 .adminId(p.getAdminId())
                 .projectManagerId(p.getProjectManagerId())
