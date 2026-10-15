@@ -25,6 +25,7 @@ import com.frietsync.backend.repository.project.ProjectRepository;
 import com.frietsync.backend.repository.sprint.SprintRepository;
 import com.frietsync.backend.service.poll.PollService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -195,6 +196,26 @@ public class PollServiceImpl implements PollService {
             throw new BadRequestException("A closed poll decision record cannot be changed");
         }
         return response(poll, userId);
+    }
+
+    @Scheduled(fixedDelayString = "${app.polls.expiry.delay-ms:10000}")
+    @Transactional
+    public void closeExpiredPolls() {
+        Instant now = Instant.now();
+        List<Poll> expiredPolls = pollRepository
+                .findTop100ByStatusAndClosesAtLessThanEqualOrderByClosesAtAsc(PollStatus.OPEN, now);
+        for (Poll expiredPoll : expiredPolls) {
+            var lockedPollResult = pollRepository.findByIdForUpdate(expiredPoll.getId());
+            if (lockedPollResult.isEmpty()) {
+                continue;
+            }
+            Poll poll = lockedPollResult.get();
+            if (poll.getStatus() == PollStatus.OPEN
+                    && poll.getClosesAt() != null
+                    && !poll.getClosesAt().isAfter(now)) {
+                closePoll(poll);
+            }
+        }
     }
 
     private Poll closeIfExpired(Poll poll) {
