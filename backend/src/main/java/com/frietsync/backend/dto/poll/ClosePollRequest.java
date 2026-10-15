@@ -6,5 +6,6 @@ import lombok.Data;
 @Data
 public class ClosePollRequest {
 
+    @Size(max = 4000)
     private String decisionRecord;
 }

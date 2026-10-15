@@ -149,7 +149,81 @@ The backend also exposes authenticated routes for workspaces, projects, issues, 
 | PUT | `/api/v1/notifications/preferences` | Authenticated | Update notification preferences |
 | DELETE | `/api/v1/users/workspace/leave` | Authenticated | Leave the current workspace |
 
-Protected routes use `Authorization: ******` except for refresh and logout, which use the `refreshToken` HTTP-only cookie set during login.
+#### Poll API request and response formats
+
+Poll routes require `Authorization: Bearer <access-token>`. Any authenticated project member can create, view, and vote in polls. Only the poll creator, project manager, or project admin can close one.
+
+Create a poll with `POST /api/v1/projects/{projectId}/polls`:
+
+```json
+{
+  "question": "Which approach should we use?",
+  "description": "Optional background",
+  "options": ["Approach A", "Approach B"],
+  "closesAt": "2026-10-20T12:00:00Z",
+  "mode": "SINGLE",
+  "issueId": null,
+  "sprintId": null,
+  "milestoneId": null
+}
+```
+
+`question` is required (up to 200 characters). `options` must contain 2–20 unique, nonblank values, each up to 300 characters. `description` is optional (up to 400 characters). `closesAt` is an optional future ISO-8601 timestamp. `mode` is `SINGLE` or `MULTIPLE`; if omitted, it defaults to `SINGLE`. At most one of `issueId`, `sprintId`, or `milestoneId` can be provided, and the linked item must belong to the specified project. Creation returns **201 Created**.
+
+Other poll routes:
+
+| Method | Endpoint | Purpose | Request body |
+|---|---|---|---|
+| GET | `/api/v1/projects/{projectId}/polls` | List polls in the project | None |
+| GET | `/api/v1/polls/{pollId}` | Get a poll and its current results | None |
+| PUT | `/api/v1/polls/{pollId}/votes` | Cast or replace your vote | One of the vote bodies below |
+| POST | `/api/v1/polls/{pollId}/close` | Close a poll and save its decision record | Optional `{"decisionRecord":"The selected approach and rationale"}` |
+
+Single-choice vote body:
+
+```json
+{
+  "optionId": "<option-uuid>"
+}
+```
+
+Multiple-choice vote body:
+
+```json
+{
+  "optionIds": ["<option-uuid-1>", "<option-uuid-2>"]
+}
+```
+
+Use either `optionId` or `optionIds`, not both. The selected options must belong to that poll. A vote can be changed by sending another vote request while the poll remains open.
+
+Poll endpoints return a `PollResponse` (or a list of them) with this shape:
+
+```json
+{
+  "id": "<poll-uuid>",
+  "projectId": "<project-uuid>",
+  "question": "Which approach should we use?",
+  "description": "Optional background",
+  "status": "OPEN",
+  "createdBy": "<user-uuid>",
+  "issueId": null,
+  "sprintId": null,
+  "milestoneId": null,
+  "closesAt": "2026-10-20T12:00:00Z",
+  "closedAt": null,
+  "decisionRecord": null,
+  "createdAt": "2026-10-15T09:00:00Z",
+  "options": [
+    {"id": "<option-uuid-1>", "label": "Approach A", "order": 0, "votes": 2},
+    {"id": "<option-uuid-2>", "label": "Approach B", "order": 1, "votes": 1}
+  ],
+  "myVote": "<option-uuid-1>",
+  "myVotes": ["<option-uuid-1>"]
+}
+```
+
+`myVote` is the current user's first selected option (or `null` when they have not voted); `myVotes` contains all of their selected options. The scheduler closes expired polls automatically. `decisionRecord` is optional and limited to 4,000 characters.
 
 Protected routes use `Authorization: Bearer <access-token>`, except refresh and logout, which use the `refreshToken` HTTP-only cookie set during login. 
 
