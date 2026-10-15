@@ -5,6 +5,7 @@ import com.frietsync.backend.service.email.EmailService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -32,6 +33,7 @@ public class EmailServiceImpl implements EmailService {
     }
 
     @Override
+    @Async
     public void sendInviteMail(String recipient, String role) {
         EmailDetails details = new EmailDetails();
         details.setRecipient(recipient);
