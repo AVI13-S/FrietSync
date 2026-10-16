@@ -9,6 +9,7 @@ import com.frietsync.backend.entity.issue.IssueComment;
 import com.frietsync.backend.entity.sprint.Sprint;
 import com.frietsync.backend.entity.sprint.SprintComment;
 import com.frietsync.backend.exception.ResourceNotFoundException;
+import com.frietsync.backend.exception.ForbiddenException;
 import com.frietsync.backend.repository.issue.IssueCommentRepository;
 import com.frietsync.backend.repository.sprint.SprintCommentRepository;
 import com.frietsync.backend.repository.sprint.SprintRepository;
@@ -52,6 +53,34 @@ public class CommentServiceImpl implements CommentService {
     }
 
     @Override
+    public IssueCommentResponse updateIssueComment(UUID issueId, UUID commentId,
+                                                   CreateIssueCommentRequest request, UUID userId) {
+        IssueComment comment = issueCommentRepository.findById(commentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Issue comment not found"));
+        if (!comment.getIssueId().equals(issueId)) {
+            throw new ResourceNotFoundException("Issue comment not found");
+        }
+        Issue issue = projectAccess.issue(issueId);
+        projectAccess.requireMember(projectAccess.project(issue.getProjectId()), userId);
+        requireCommentOwner(comment.getUserId(), userId);
+        comment.setContent(request.getContent().trim());
+        return IssueCommentResponse.fromEntity(issueCommentRepository.save(comment));
+    }
+
+    @Override
+    public void deleteIssueComment(UUID issueId, UUID commentId, UUID userId) {
+        IssueComment comment = issueCommentRepository.findById(commentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Issue comment not found"));
+        if (!comment.getIssueId().equals(issueId)) {
+            throw new ResourceNotFoundException("Issue comment not found");
+        }
+        Issue issue = projectAccess.issue(issueId);
+        projectAccess.requireMember(projectAccess.project(issue.getProjectId()), userId);
+        requireCommentOwner(comment.getUserId(), userId);
+        issueCommentRepository.delete(comment);
+    }
+
+    @Override
     public SprintCommentResponse addSprintComment(UUID sprintId, CreateSprintCommentRequest request, UUID userId) {
         Sprint sprint = findSprint(sprintId);
         projectAccess.requireMember(projectAccess.project(sprint.getProjectId()), userId);
@@ -69,6 +98,40 @@ public class CommentServiceImpl implements CommentService {
         projectAccess.requireMember(projectAccess.project(sprint.getProjectId()), userId);
         return sprintCommentRepository.findBySprintIdOrderByCreatedAtAsc(sprintId).stream()
                 .map(SprintCommentResponse::fromEntity).toList();
+    }
+
+    @Override
+    public SprintCommentResponse updateSprintComment(UUID sprintId, UUID commentId,
+                                                     CreateSprintCommentRequest request, UUID userId) {
+        SprintComment comment = sprintCommentRepository.findById(commentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Sprint comment not found"));
+        if (!comment.getSprintId().equals(sprintId)) {
+            throw new ResourceNotFoundException("Sprint comment not found");
+        }
+        Sprint sprint = findSprint(sprintId);
+        projectAccess.requireMember(projectAccess.project(sprint.getProjectId()), userId);
+        requireCommentOwner(comment.getUserId(), userId);
+        comment.setContent(request.getContent().trim());
+        return SprintCommentResponse.fromEntity(sprintCommentRepository.save(comment));
+    }
+
+    @Override
+    public void deleteSprintComment(UUID sprintId, UUID commentId, UUID userId) {
+        SprintComment comment = sprintCommentRepository.findById(commentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Sprint comment not found"));
+        if (!comment.getSprintId().equals(sprintId)) {
+            throw new ResourceNotFoundException("Sprint comment not found");
+        }
+        Sprint sprint = findSprint(sprintId);
+        projectAccess.requireMember(projectAccess.project(sprint.getProjectId()), userId);
+        requireCommentOwner(comment.getUserId(), userId);
+        sprintCommentRepository.delete(comment);
+    }
+
+    private void requireCommentOwner(UUID ownerId, UUID userId) {
+        if (!ownerId.equals(userId)) {
+            throw new ForbiddenException("You can only edit or delete your own comments");
+        }
     }
 
     private Sprint findSprint(UUID sprintId) {

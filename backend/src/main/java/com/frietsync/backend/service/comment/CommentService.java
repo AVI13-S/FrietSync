@@ -13,7 +13,17 @@ public interface CommentService {
 
     List<IssueCommentResponse> listIssueComments(UUID issueId, UUID userId);
 
+    IssueCommentResponse updateIssueComment(UUID issueId, UUID commentId,
+                                             CreateIssueCommentRequest request, UUID userId);
+
+    void deleteIssueComment(UUID issueId, UUID commentId, UUID userId);
+
     SprintCommentResponse addSprintComment(UUID sprintId, CreateSprintCommentRequest request, UUID userId);
 
     List<SprintCommentResponse> listSprintComments(UUID sprintId, UUID userId);
+
+    SprintCommentResponse updateSprintComment(UUID sprintId, UUID commentId,
+                                               CreateSprintCommentRequest request, UUID userId);
+
+    void deleteSprintComment(UUID sprintId, UUID commentId, UUID userId);
 }
