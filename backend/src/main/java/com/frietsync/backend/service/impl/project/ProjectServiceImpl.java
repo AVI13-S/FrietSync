@@ -30,6 +30,7 @@ import com.frietsync.backend.repository.issue.IssueRepository;
 import com.frietsync.backend.repository.project.MilestoneRepository;
 import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
+import com.frietsync.backend.repository.document.ProjectDocumentRepository;
 import com.frietsync.backend.repository.sprint.SprintAssignmentRequestRepository;
 import com.frietsync.backend.repository.sprint.SprintRepository;
 import com.frietsync.backend.repository.user.UserRepository;
@@ -53,6 +54,7 @@ import java.util.stream.Stream;
 public class ProjectServiceImpl implements ProjectService {
 
     private final ProjectRepository projectRepository;
+    private final ProjectDocumentRepository projectDocumentRepository;
     private final UserRepository userRepository;
     private final IssueRepository issueRepository;
     private final IssueAssigneeRepository issueAssigneeRepository;
@@ -160,6 +162,7 @@ public class ProjectServiceImpl implements ProjectService {
         sprintAssignmentRequestRepository.deleteAllForProject(projectId);
         sprintRepository.deleteByProjectId(projectId);
         issueService.deleteAllForProject(projectId);
+        projectDocumentRepository.deleteByProjectId(projectId);
         chatMessageRepository.deleteByProjectId(projectId);
         meetingAttendeeRepository.deleteByProjectId(projectId);
         meetingRepository.deleteByProjectId(projectId);
