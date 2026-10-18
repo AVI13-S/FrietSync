@@ -16,10 +16,17 @@ public class ProjectSummaryResponse {
     private UUID projectId;
     private String projectName;
     private ProjectStatus projectStatus;
+    private Instant generatedAt;
+
+    private String summaryText;
+
+    private LocalDate startDate;
     private LocalDate deadline;
+    private LocalDate completedDate;
+    private Long plannedDurationDays;
+    private Long actualDurationDays;
     private boolean projectDelayed;
     private long projectDaysLate;
-    private Instant generatedAt;
 
     private int totalIssues;
     private int openIssues;

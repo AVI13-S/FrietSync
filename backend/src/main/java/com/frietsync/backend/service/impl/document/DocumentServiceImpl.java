@@ -67,7 +67,7 @@ public class DocumentServiceImpl implements DocumentService {
     @Transactional
     public DocumentResponse create(UUID projectId, DocumentRequest request, UUID userId) {
         Project project = projectAccess.project(projectId);
-        projectAccess.require(project, userId, Role.PROJECT_MANAGER);
+        projectAccess.require(project, userId, Role.PROJECT_MANAGER, Role.TEAM_LEAD);
 
         ProjectDocument document = new ProjectDocument();
         document.setProjectId(projectId);
@@ -98,7 +98,7 @@ public class DocumentServiceImpl implements DocumentService {
     public DocumentResponse update(UUID documentId, UpdateDocumentRequest request, UUID userId) {
         ProjectDocument document = findDocument(documentId);
         Project project = projectAccess.project(document.getProjectId());
-        projectAccess.require(project, userId, Role.PROJECT_MANAGER);
+        projectAccess.require(project, userId, Role.PROJECT_MANAGER, Role.TEAM_LEAD);
 
         if (request.getTitle() == null && request.getContent() == null) {
             throw new BadRequestException("Nothing to update");

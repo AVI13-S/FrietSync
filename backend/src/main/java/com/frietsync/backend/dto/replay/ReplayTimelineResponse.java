@@ -15,5 +15,6 @@ public class ReplayTimelineResponse {
     private String projectName;
     private Instant from;
     private Instant to;
+    private boolean completed;
     private List<ReplayPhaseResponse> phases;
 }

@@ -16,6 +16,9 @@ public class ReplayPhaseResponse {
     private String title;
     private String description;
     private Instant phaseDate;
+    private Instant endDate;
+    private long durationDays;
+    private String cause;
     private boolean reached;
     private boolean dateOverridden;
     private int count;

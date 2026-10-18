@@ -30,13 +30,23 @@ public class SummaryPdfBuilder {
             document.open();
 
             document.add(new Paragraph("Project Summary", titleFont));
-            document.add(new Paragraph(summary.getProjectName(), headingFont));
+            document.add(new Paragraph(text(summary.getProjectName()), headingFont));
             document.add(new Paragraph("Generated at: " + summary.getGeneratedAt(), normalFont));
 
-            document.add(heading("Project"));
+            if (summary.getSummaryText() != null) {
+                Paragraph overview = new Paragraph(summary.getSummaryText(), normalFont);
+                overview.setSpacingBefore(10);
+                document.add(overview);
+            }
+
+            document.add(heading("Estimated vs actual dates"));
             PdfPTable project = twoColumnTable();
-            row(project, "Status", String.valueOf(summary.getProjectStatus()));
-            row(project, "Deadline", String.valueOf(summary.getDeadline()));
+            row(project, "Status", text(summary.getProjectStatus()));
+            row(project, "Start date", text(summary.getStartDate()));
+            row(project, "Planned end (deadline)", text(summary.getDeadline()));
+            row(project, "Actual completion", text(summary.getCompletedDate()));
+            row(project, "Planned duration", days(summary.getPlannedDurationDays()));
+            row(project, "Actual duration", days(summary.getActualDurationDays()));
             if (summary.isProjectDelayed()) {
                 row(project, "Delayed by", summary.getProjectDaysLate() + " days");
             } else {
@@ -60,7 +70,7 @@ public class SummaryPdfBuilder {
             PdfPTable hours = twoColumnTable();
             row(hours, "Total estimated (all issues)", String.valueOf(summary.getTotalEstimatedHours()));
             row(hours, "Estimated (finished issues)", String.valueOf(summary.getFinishedEstimatedHours()));
-            row(hours, "Actual (finished issues)", String.valueOf(summary.getFinishedActualHours()));
+            row(hours, "Actual elapsed (finished issues)", String.valueOf(summary.getFinishedActualHours()));
             document.add(hours);
 
             document.add(heading("Sprints"));
@@ -73,20 +83,25 @@ public class SummaryPdfBuilder {
             document.add(sprints);
 
             document.add(heading("Delayed issues"));
-            if (summary.getDelayedIssues().isEmpty()) {
+            if (summary.getDelayedIssues() == null || summary.getDelayedIssues().isEmpty()) {
                 document.add(new Paragraph("No delayed issues.", normalFont));
             } else {
-                PdfPTable delayed = new PdfPTable(4);
+                PdfPTable delayed = new PdfPTable(5);
                 delayed.setWidthPercentage(100);
+                delayed.setWidths(new float[]{4f, 2f, 1.8f, 1.8f, 1.2f});
                 delayed.setSpacingBefore(6);
                 delayed.addCell(new Phrase("Issue", boldFont));
                 delayed.addCell(new Phrase("State", boldFont));
                 delayed.addCell(new Phrase("Due date", boldFont));
+                delayed.addCell(new Phrase("Actual finish", boldFont));
                 delayed.addCell(new Phrase("Days late", boldFont));
+                delayed.setHeaderRows(1);
                 for (DelayedIssueResponse issue : summary.getDelayedIssues()) {
-                    delayed.addCell(new Phrase("#" + issue.getIssueNumber() + " " + issue.getTitle(), normalFont));
-                    delayed.addCell(new Phrase(issue.getState(), normalFont));
-                    delayed.addCell(new Phrase(String.valueOf(issue.getDueDate()), normalFont));
+                    delayed.addCell(new Phrase("#" + issue.getIssueNumber() + " " + text(issue.getTitle()),
+                            normalFont));
+                    delayed.addCell(new Phrase(text(issue.getState()), normalFont));
+                    delayed.addCell(new Phrase(text(issue.getDueDate()), normalFont));
+                    delayed.addCell(new Phrase(text(issue.getCompletedDate()), normalFont));
                     delayed.addCell(new Phrase(String.valueOf(issue.getDaysLate()), normalFont));
                 }
                 document.add(delayed);
@@ -115,5 +130,19 @@ public class SummaryPdfBuilder {
     private void row(PdfPTable table, String label, String value) {
         table.addCell(new Phrase(label, boldFont));
         table.addCell(new Phrase(value, normalFont));
+    }
+
+    private String text(Object value) {
+        if (value == null) {
+            return "-";
+        }
+        return String.valueOf(value);
+    }
+
+    private String days(Long value) {
+        if (value == null) {
+            return "-";
+        }
+        return value + " days";
     }
 }
