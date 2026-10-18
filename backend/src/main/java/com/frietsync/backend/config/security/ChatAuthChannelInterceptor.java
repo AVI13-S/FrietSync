@@ -29,6 +29,7 @@ public class ChatAuthChannelInterceptor implements ChannelInterceptor {
     private static final String SEND_PREFIX = "/app/projects/";
     private static final String CHAT_SUFFIX = "/chat";
     private static final String TOPIC_PREFIX = "/topic/projects/";
+    private static final String NOTIFICATION_DESTINATION = "/user/queue/notifications";
 
     private final ChatService chatService;
     private final JwtUtil jwtUtil;
@@ -45,10 +46,10 @@ public class ChatAuthChannelInterceptor implements ChannelInterceptor {
         if (accessor.getCommand() == StompCommand.CONNECT) {
             authenticate(accessor);
         } else if (accessor.getCommand() == StompCommand.SUBSCRIBE) {
-            chatService.assertProjectAccess(
-                    subscriptionProjectId(accessor.getDestination()),
-                    userId(accessor)
-            );
+            UUID userId = userId(accessor);
+            if (!NOTIFICATION_DESTINATION.equals(accessor.getDestination())) {
+                chatService.assertProjectAccess(subscriptionProjectId(accessor.getDestination()), userId);
+            }
         } else if (accessor.getCommand() == StompCommand.SEND) {
             chatService.assertProjectAccess(
                     projectId(accessor.getDestination(), SEND_PREFIX),

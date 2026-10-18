@@ -20,6 +20,8 @@ import com.frietsync.backend.service.invite.InviteService;
 import com.frietsync.backend.entity.user.User;
 import com.frietsync.backend.entity.user.Role;
 import com.frietsync.backend.repository.user.UserRepository;
+import com.frietsync.backend.entity.notification.NotificationType;
+import com.frietsync.backend.service.notification.NotificationPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,19 +44,22 @@ public class InviteServiceImpl implements InviteService {
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository projectMemberRepository;
     private final EmailService emailService;
+    private final NotificationPublisher notificationPublisher;
 
     public InviteServiceImpl(InviteRepository inviteRepository,
                              UserRepository userRepository,
                              WorkspaceRepository workspaceRepository,
                              ProjectRepository projectRepository,
                              ProjectMemberRepository projectMemberRepository,
-                             EmailService emailService) {
+                             EmailService emailService,
+                             NotificationPublisher notificationPublisher) {
         this.inviteRepository = inviteRepository;
         this.userRepository = userRepository;
         this.workspaceRepository = workspaceRepository;
         this.projectRepository = projectRepository;
         this.projectMemberRepository = projectMemberRepository;
         this.emailService = emailService;
+        this.notificationPublisher = notificationPublisher;
     }
 
     @Override
@@ -174,6 +179,21 @@ public class InviteServiceImpl implements InviteService {
         invite.setProjectId(projectId);
 
         inviteRepository.save(invite);
+
+        userRepository.findByEmailIgnoreCase(email).ifPresent(invitee -> {
+            String inviteMessage = "You were invited by " + admin.getName()
+                    + " to " + invite.getPurpose().name().toLowerCase().replace('_', ' ')
+                    + (invite.getRole() == null ? "." : " as " + invite.getRole().name() + ".");
+            notificationPublisher.publish(
+                    invitee.getId(),
+                    NotificationType.INVITE_RECEIVED,
+                    "You received an invite",
+                    inviteMessage,
+                    invite.getProjectId(),
+                    null,
+                    admin.getId()
+            );
+        });
 
         String inviteType = switch (purpose) {
             case WORKSPACE_INVITE, PROJECT_INVITE -> invite.getRole().name();
@@ -409,6 +429,19 @@ public class InviteServiceImpl implements InviteService {
         invite.setStatus(InviteStatus.ACCEPTED);
         invite.setAcceptedAt(now);
         inviteRepository.save(invite);
+
+        userRepository.findById(invite.getInvitedBy()).ifPresent(inviter ->
+                notificationPublisher.publish(
+                        inviter.getId(),
+                        NotificationType.INVITE_ACCEPTED,
+                        "Your invite was accepted",
+                        user.getName() + " accepted your "
+                                + invite.getPurpose().name().toLowerCase().replace('_', ' ') + ".",
+                        invite.getProjectId(),
+                        null,
+                        user.getId()
+                )
+        );
 
         return toResponse(invite);
     }
