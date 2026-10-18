@@ -176,7 +176,7 @@ public class InviteServiceImpl implements InviteService {
         inviteRepository.save(invite);
 
         String inviteType = switch (purpose) {
-            case WORKSPACE_INVITE -> invite.getRole().name();
+            case WORKSPACE_INVITE, PROJECT_INVITE -> invite.getRole().name();
             case OWNERSHIP_TRANSFER -> "OWNERSHIP_TRANSFER";
         };
 

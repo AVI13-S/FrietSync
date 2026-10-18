@@ -97,8 +97,8 @@ public class ProjectDashboardService {
                     localDate(meeting.getStartAt()), localDate(meeting.getEndAt())));
         }
         for (Poll poll : pollRepository.findByProjectIdOrderByCreatedAtDesc(projectId)) {
-            if (poll.getClosesAt() != null) {
-                LocalDate closeDate = localDate(poll.getClosesAt());
+            if (poll.getEndsAt() != null) {
+                LocalDate closeDate = localDate(poll.getEndsAt());
                 events.add(new ProjectCalendarResponse.Event("POLL_DEADLINE", poll.getId(), poll.getQuestion(),
                         closeDate, closeDate));
             }

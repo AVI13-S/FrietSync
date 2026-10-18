@@ -31,7 +31,7 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.util.DigestUtils;
+import org.apache.commons.codec.digest.DigestUtils;
 
 @Service
 @RequiredArgsConstructor
@@ -162,6 +162,6 @@ public class GoogleIntegrationServiceImpl implements GoogleIntegrationService {
     }
 
     private static String hash(String value) {
-        return DigestUtils.sha256DigestAsHex(value);
+        return DigestUtils.sha256Hex(value);
     }
 }
