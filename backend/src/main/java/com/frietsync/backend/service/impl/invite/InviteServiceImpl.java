@@ -22,6 +22,7 @@ import com.frietsync.backend.entity.user.Role;
 import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.entity.notification.NotificationType;
 import com.frietsync.backend.service.notification.NotificationPublisher;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,8 +37,6 @@ import java.util.UUID;
 @Service
 public class InviteServiceImpl implements InviteService {
 
-    private static final Duration INVITE_VALIDITY = Duration.ofDays(7);
-
     private final InviteRepository inviteRepository;
     private final UserRepository userRepository;
     private final WorkspaceRepository workspaceRepository;
@@ -45,6 +44,8 @@ public class InviteServiceImpl implements InviteService {
     private final ProjectMemberRepository projectMemberRepository;
     private final EmailService emailService;
     private final NotificationPublisher notificationPublisher;
+    private final Duration inviteValidity;
+    private final String invitesUrl;
 
     public InviteServiceImpl(InviteRepository inviteRepository,
                              UserRepository userRepository,
@@ -52,7 +53,9 @@ public class InviteServiceImpl implements InviteService {
                              ProjectRepository projectRepository,
                              ProjectMemberRepository projectMemberRepository,
                              EmailService emailService,
-                             NotificationPublisher notificationPublisher) {
+                             NotificationPublisher notificationPublisher,
+                             @Value("${app.invite.validity-days}") long inviteValidityDays,
+                             @Value("${app.invite.frontend-url}") String invitesUrl) {
         this.inviteRepository = inviteRepository;
         this.userRepository = userRepository;
         this.workspaceRepository = workspaceRepository;
@@ -60,6 +63,8 @@ public class InviteServiceImpl implements InviteService {
         this.projectMemberRepository = projectMemberRepository;
         this.emailService = emailService;
         this.notificationPublisher = notificationPublisher;
+        this.inviteValidity = Duration.ofDays(inviteValidityDays);
+        this.invitesUrl = invitesUrl;
     }
 
     @Override
@@ -91,7 +96,7 @@ public class InviteServiceImpl implements InviteService {
 
         Instant now = Instant.now();
         Instant expiresAt = request.getExpiresAt() == null
-                ? now.plus(INVITE_VALIDITY)
+                ? now.plus(inviteValidity)
                 : request.getExpiresAt();
 
         if (!expiresAt.isAfter(now)) {
@@ -200,7 +205,7 @@ public class InviteServiceImpl implements InviteService {
             case OWNERSHIP_TRANSFER -> "OWNERSHIP_TRANSFER";
         };
 
-        emailService.sendInviteMail(email, inviteType);
+        emailService.sendInviteMail(email, inviteType, invitesUrl);
 
         return toResponse(invite);
     }
@@ -505,7 +510,7 @@ public class InviteServiceImpl implements InviteService {
     private Instant getExpirationTime(Invite invite) {
         return invite.getExpiresAt() != null
                 ? invite.getExpiresAt()
-                : invite.getCreatedAt().plus(INVITE_VALIDITY);
+                : invite.getCreatedAt().plus(inviteValidity);
     }
 
     private void ensureProjectRoleAvailable(Project project, Role role, UUID inviteeId) {
@@ -544,5 +549,4 @@ public class InviteServiceImpl implements InviteService {
             throw new BadRequestException("A pending invite already exists for this project leadership role");
         }
     }
-
 }
