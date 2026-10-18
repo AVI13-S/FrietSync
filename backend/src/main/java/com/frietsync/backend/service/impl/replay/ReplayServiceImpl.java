@@ -24,9 +24,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -41,6 +43,11 @@ public class ReplayServiceImpl implements ReplayService {
     private final IssueRepository issueRepository;
     private final SprintRepository sprintRepository;
     private final ProjectReplayPhaseRepository phaseRepository;
+    private static class Facts {
+        private final Map<ReplayPhaseType, Instant> dates = new HashMap<>();
+        private final Map<ReplayPhaseType, Integer> counts = new HashMap<>();
+        private final Map<ReplayPhaseType, String> causes = new HashMap<>();
+    }
 
     @Override
     @Transactional
@@ -48,23 +55,35 @@ public class ReplayServiceImpl implements ReplayService {
         Project project = projectAccess.project(projectId);
         projectAccess.requireMember(project, userId);
 
+        Instant now = Instant.now();
         List<Issue> issues = issueRepository.findByProjectIdAndDeletedAtIsNull(projectId);
         List<Sprint> sprints = sprintRepository.findByProjectId(projectId);
-        Map<ReplayPhaseType, Instant> dates = new HashMap<>();
-        Map<ReplayPhaseType, Integer> counts = new HashMap<>();
-        fillFacts(project, issues, sprints, dates, counts);
-        List<ProjectReplayPhase> phases = loadPhases(project, dates);
+        Facts facts = collectFacts(project, issues, sprints, now);
+        List<ProjectReplayPhase> phases = loadPhases(project, facts.dates);
+        Map<ReplayPhaseType, Instant> ends = phaseEnds(phases, now);
 
+        Instant completedAt = null;
         List<ReplayPhaseResponse> items = new ArrayList<>();
         for (ProjectReplayPhase phase : phases) {
-            items.add(toResponse(phase, counts));
+            if (phase.getPhaseType() == ReplayPhaseType.COMPLETED && phase.getPhaseDate() != null
+                    && !phase.getPhaseDate().isAfter(now)) {
+                completedAt = phase.getPhaseDate();
+            }
+            items.add(toResponse(phase, facts, ends, now));
+        }
+
+        boolean completed = project.getStatus() == ProjectStatus.COMPLETED && completedAt != null;
+        Instant to = now;
+        if (completed && completedAt.isAfter(project.getCreatedAt())) {
+            to = completedAt;
         }
 
         return ReplayTimelineResponse.builder()
                 .projectId(project.getId())
                 .projectName(project.getName())
                 .from(project.getCreatedAt())
-                .to(Instant.now())
+                .to(to)
+                .completed(completed)
                 .phases(items)
                 .build();
     }
@@ -95,14 +114,21 @@ public class ReplayServiceImpl implements ReplayService {
             phase.setPhaseDate(request.getPhaseDate());
             phase.setDateOverridden(true);
         }
-        phase = phaseRepository.save(phase);
+        phaseRepository.save(phase);
 
+        Instant now = Instant.now();
         List<Issue> issues = issueRepository.findByProjectIdAndDeletedAtIsNull(projectId);
         List<Sprint> sprints = sprintRepository.findByProjectId(projectId);
-        Map<ReplayPhaseType, Instant> dates = new HashMap<>();
-        Map<ReplayPhaseType, Integer> counts = new HashMap<>();
-        fillFacts(project, issues, sprints, dates, counts);
-        return toResponse(phase, counts);
+        Facts facts = collectFacts(project, issues, sprints, now);
+        List<ProjectReplayPhase> phases = loadPhases(project, facts.dates);
+        Map<ReplayPhaseType, Instant> ends = phaseEnds(phases, now);
+
+        for (ProjectReplayPhase current : phases) {
+            if (current.getId().equals(phase.getId())) {
+                return toResponse(current, facts, ends, now);
+            }
+        }
+        return toResponse(phase, facts, ends, now);
     }
 
     @Override
@@ -112,8 +138,9 @@ public class ReplayServiceImpl implements ReplayService {
         projectAccess.requireMember(project, userId);
 
         Instant now = Instant.now();
+        boolean isNow = at == null || !at.isBefore(now);
         Instant moment = now;
-        if (at != null && at.isBefore(now)) {
+        if (!isNow) {
             moment = at;
         }
         if (moment.isBefore(project.getCreatedAt())) {
@@ -123,10 +150,8 @@ public class ReplayServiceImpl implements ReplayService {
 
         List<Issue> issues = issueRepository.findByProjectIdAndDeletedAtIsNull(projectId);
         List<Sprint> sprints = sprintRepository.findByProjectId(projectId);
-        Map<ReplayPhaseType, Instant> dates = new HashMap<>();
-        Map<ReplayPhaseType, Integer> counts = new HashMap<>();
-        fillFacts(project, issues, sprints, dates, counts);
-        List<ProjectReplayPhase> phases = loadPhases(project, dates);
+        Facts facts = collectFacts(project, issues, sprints, now);
+        List<ProjectReplayPhase> phases = loadPhases(project, facts.dates);
 
         ReplayPhaseType currentPhase = null;
         Instant currentDate = null;
@@ -147,12 +172,10 @@ public class ReplayServiceImpl implements ReplayService {
             if (issue.getCreatedAt().isAfter(moment)) {
                 continue;
             }
-            IssueStatus status = IssueStatus.OPEN;
-            if (issue.getClosedAt() != null && !issue.getClosedAt().isAfter(moment)) {
-                status = IssueStatus.CLOSED;
+            IssueStatus bucket = statusAt(issue, moment, isNow);
+            if (bucket == IssueStatus.CLOSED) {
                 closed++;
-            } else if (issue.getResolvedAt() != null && !issue.getResolvedAt().isAfter(moment)) {
-                status = IssueStatus.RESOLVED;
+            } else if (bucket == IssueStatus.RESOLVED) {
                 resolved++;
             } else {
                 open++;
@@ -160,11 +183,16 @@ public class ReplayServiceImpl implements ReplayService {
                     overdue++;
                 }
             }
+
+            IssueStatus shown = bucket;
+            if (isNow) {
+                shown = issue.getStatus();
+            }
             visible.add(IssueSummaryResponse.builder()
                     .id(issue.getId())
                     .issueNumber(issue.getIssueNumber())
                     .title(issue.getTitle())
-                    .status(status)
+                    .status(shown)
                     .priority(issue.getPriority())
                     .dueDate(issue.getDueDate())
                     .build());
@@ -197,9 +225,27 @@ public class ReplayServiceImpl implements ReplayService {
                 .build();
     }
 
-    private void fillFacts(Project project, List<Issue> issues, List<Sprint> sprints,
-                           Map<ReplayPhaseType, Instant> dates, Map<ReplayPhaseType, Integer> counts) {
-        Instant now = Instant.now();
+    private IssueStatus statusAt(Issue issue, Instant moment, boolean isNow) {
+        if (isNow) {
+            if (issue.getStatus() == IssueStatus.CLOSED) {
+                return IssueStatus.CLOSED;
+            }
+            if (issue.getStatus() == IssueStatus.RESOLVED) {
+                return IssueStatus.RESOLVED;
+            }
+            return IssueStatus.OPEN;
+        }
+        if (issue.getClosedAt() != null && !issue.getClosedAt().isAfter(moment)) {
+            return IssueStatus.CLOSED;
+        }
+        if (issue.getResolvedAt() != null && !issue.getResolvedAt().isAfter(moment)) {
+            return IssueStatus.RESOLVED;
+        }
+        return IssueStatus.OPEN;
+    }
+
+    private Facts collectFacts(Project project, List<Issue> issues, List<Sprint> sprints, Instant now) {
+        Facts facts = new Facts();
         Instant firstIssueAt = null;
         Instant firstFinishedAt = null;
         Instant firstDelayAt = null;
@@ -237,15 +283,23 @@ public class ReplayServiceImpl implements ReplayService {
         }
 
         LocalDate deadline = project.getDeadline();
+        LocalDate completeDate = project.getCompleteDate();
+        boolean projectLate = false;
+        long projectDaysLate = 0;
         if (deadline != null) {
             Instant deadlineEnd = startOfDay(deadline.plusDays(1));
-            boolean projectLate;
             if (project.getStatus() == ProjectStatus.COMPLETED) {
-                projectLate = project.getCompleteDate() != null && project.getCompleteDate().isAfter(deadline);
+                projectLate = completeDate != null && completeDate.isAfter(deadline);
+                if (projectLate) {
+                    projectDaysLate = ChronoUnit.DAYS.between(deadline, completeDate);
+                }
             } else if (project.getStatus() == ProjectStatus.CANCELLED) {
                 projectLate = false;
             } else {
                 projectLate = deadlineEnd.isBefore(now);
+                if (projectLate) {
+                    projectDaysLate = ChronoUnit.DAYS.between(deadline, LocalDate.now(ZoneOffset.UTC));
+                }
             }
             if (projectLate && (firstDelayAt == null || deadlineEnd.isBefore(firstDelayAt))) {
                 firstDelayAt = deadlineEnd;
@@ -266,26 +320,92 @@ public class ReplayServiceImpl implements ReplayService {
 
         Instant completedAt = null;
         if (project.getStatus() == ProjectStatus.COMPLETED) {
-            if (project.getCompleteDate() != null) {
-                completedAt = startOfDay(project.getCompleteDate());
+            if (completeDate != null) {
+                completedAt = startOfDay(completeDate);
             } else {
                 completedAt = project.getUpdatedAt();
             }
         }
 
-        dates.put(ReplayPhaseType.CREATED, project.getCreatedAt());
-        dates.put(ReplayPhaseType.PLANNED, plannedAt);
-        dates.put(ReplayPhaseType.DELAYED, firstDelayAt);
-        dates.put(ReplayPhaseType.ISSUES, firstIssueAt);
-        dates.put(ReplayPhaseType.RESOLVED, firstFinishedAt);
-        dates.put(ReplayPhaseType.COMPLETED, completedAt);
+        facts.dates.put(ReplayPhaseType.CREATED, project.getCreatedAt());
+        facts.dates.put(ReplayPhaseType.PLANNED, plannedAt);
+        facts.dates.put(ReplayPhaseType.DELAYED, firstDelayAt);
+        facts.dates.put(ReplayPhaseType.ISSUES, firstIssueAt);
+        facts.dates.put(ReplayPhaseType.RESOLVED, firstFinishedAt);
+        facts.dates.put(ReplayPhaseType.COMPLETED, completedAt);
 
-        counts.put(ReplayPhaseType.CREATED, 0);
-        counts.put(ReplayPhaseType.PLANNED, sprints.size());
-        counts.put(ReplayPhaseType.DELAYED, delayedCount);
-        counts.put(ReplayPhaseType.ISSUES, issues.size());
-        counts.put(ReplayPhaseType.RESOLVED, finishedCount);
-        counts.put(ReplayPhaseType.COMPLETED, 0);
+        facts.counts.put(ReplayPhaseType.CREATED, 0);
+        facts.counts.put(ReplayPhaseType.PLANNED, sprints.size());
+        facts.counts.put(ReplayPhaseType.DELAYED, delayedCount);
+        facts.counts.put(ReplayPhaseType.ISSUES, issues.size());
+        facts.counts.put(ReplayPhaseType.RESOLVED, finishedCount);
+        facts.counts.put(ReplayPhaseType.COMPLETED, 0);
+
+        // Causes
+        facts.causes.put(ReplayPhaseType.CREATED, "The project was set up");
+
+        if (project.getStartDate() != null) {
+            facts.causes.put(ReplayPhaseType.PLANNED, "Project start date was set to " + project.getStartDate()
+                    + " (" + sprints.size() + " sprint(s) planned)");
+        } else if (!sprints.isEmpty()) {
+            facts.causes.put(ReplayPhaseType.PLANNED, "The first sprint was created (" + sprints.size()
+                    + " sprint(s) planned)");
+        }
+
+        StringBuilder delayCause = new StringBuilder();
+        if (delayedCount > 0) {
+            delayCause.append(delayedCount).append(" issue(s) passed their due date");
+        }
+        if (projectLate) {
+            if (delayCause.length() > 0) {
+                delayCause.append("; ");
+            }
+            delayCause.append("the project deadline ").append(deadline).append(" was missed by ")
+                    .append(projectDaysLate).append(" day(s)");
+        }
+        if (delayCause.length() > 0) {
+            facts.causes.put(ReplayPhaseType.DELAYED, delayCause.toString());
+        }
+
+        if (!issues.isEmpty()) {
+            facts.causes.put(ReplayPhaseType.ISSUES, "The first issue was raised, " + issues.size()
+                    + " issue(s) in total");
+        }
+        if (finishedCount > 0) {
+            facts.causes.put(ReplayPhaseType.RESOLVED, "The first issue was resolved, " + finishedCount + " of "
+                    + issues.size() + " issue(s) resolved or closed");
+        }
+        if (completedAt != null) {
+            String text = "The project was marked as completed";
+            if (projectLate) {
+                text = text + " " + projectDaysLate + " day(s) after its deadline";
+            } else if (deadline != null) {
+                text = text + " on or before its deadline";
+            }
+            facts.causes.put(ReplayPhaseType.COMPLETED, text);
+        }
+        return facts;
+    }
+
+    private Map<ReplayPhaseType, Instant> phaseEnds(List<ProjectReplayPhase> phases, Instant now) {
+        List<ProjectReplayPhase> reached = new ArrayList<>();
+        for (ProjectReplayPhase phase : phases) {
+            if (phase.getPhaseDate() != null && !phase.getPhaseDate().isAfter(now)) {
+                reached.add(phase);
+            }
+        }
+        reached.sort((a, b) -> a.getPhaseDate().compareTo(b.getPhaseDate()));
+
+        Map<ReplayPhaseType, Instant> ends = new HashMap<>();
+        for (int i = 0; i < reached.size(); i++) {
+            ProjectReplayPhase phase = reached.get(i);
+            if (i + 1 < reached.size()) {
+                ends.put(phase.getPhaseType(), reached.get(i + 1).getPhaseDate());
+            } else if (phase.getPhaseType() != ReplayPhaseType.COMPLETED) {
+                ends.put(phase.getPhaseType(), now);
+            }
+        }
+        return ends;
     }
 
     private List<ProjectReplayPhase> loadPhases(Project project, Map<ReplayPhaseType, Instant> dates) {
@@ -315,9 +435,26 @@ public class ReplayServiceImpl implements ReplayService {
         return result;
     }
 
-    private ReplayPhaseResponse toResponse(ProjectReplayPhase phase, Map<ReplayPhaseType, Integer> counts) {
-        boolean reached = phase.getPhaseDate() != null && !phase.getPhaseDate().isAfter(Instant.now());
-        Integer count = counts.get(phase.getPhaseType());
+    private ReplayPhaseResponse toResponse(ProjectReplayPhase phase, Facts facts,
+                                           Map<ReplayPhaseType, Instant> ends, Instant now) {
+        Instant start = phase.getPhaseDate();
+        boolean reached = start != null && !start.isAfter(now);
+
+        Instant end = null;
+        long durationDays = 0;
+        String cause = "Not reached yet";
+        if (reached) {
+            end = ends.get(phase.getPhaseType());
+            if (end != null && !end.isBefore(start)) {
+                durationDays = Duration.between(start, end).toDays();
+            }
+            cause = facts.causes.get(phase.getPhaseType());
+            if (cause == null) {
+                cause = "No details recorded";
+            }
+        }
+
+        Integer count = facts.counts.get(phase.getPhaseType());
         int countValue = 0;
         if (count != null) {
             countValue = count;
@@ -327,7 +464,10 @@ public class ReplayServiceImpl implements ReplayService {
                 .phaseType(phase.getPhaseType())
                 .title(phase.getTitle())
                 .description(phase.getDescription())
-                .phaseDate(phase.getPhaseDate())
+                .phaseDate(start)
+                .endDate(end)
+                .durationDays(durationDays)
+                .cause(cause)
                 .reached(reached)
                 .dateOverridden(phase.isDateOverridden())
                 .count(countValue)

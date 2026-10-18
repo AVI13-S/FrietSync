@@ -15,6 +15,7 @@ public class DelayedIssueResponse {
     private int issueNumber;
     private String title;
     private IssueStatus status;
+    private LocalDate completedDate;
     private LocalDate dueDate;
     private long daysLate;
     private String state;

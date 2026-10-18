@@ -14,4 +14,6 @@ public class PresenceResponse {
     private UUID userId;
     private String name;
     private List<IssueSummaryResponse> workingOn;
+    private List<PresenceSprintResponse> activeSprints;
+    private int remainingTasks;
 }

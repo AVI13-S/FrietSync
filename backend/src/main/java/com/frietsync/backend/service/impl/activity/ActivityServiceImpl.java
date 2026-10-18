@@ -3,6 +3,7 @@ package com.frietsync.backend.service.impl.activity;
 import com.frietsync.backend.dto.activity.ActivityResponse;
 import com.frietsync.backend.dto.activity.DelayedIssueResponse;
 import com.frietsync.backend.dto.activity.PresenceResponse;
+import com.frietsync.backend.dto.activity.PresenceSprintResponse;
 import com.frietsync.backend.dto.activity.ProjectSummaryResponse;
 import com.frietsync.backend.dto.issue.IssuePageResponse;
 import com.frietsync.backend.dto.issue.IssueSummaryResponse;
@@ -41,6 +42,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -64,55 +66,101 @@ public class ActivityServiceImpl implements ActivityService {
         Project project = projectAccess.project(projectId);
         projectAccess.requireMember(project, userId);
 
-        List<Issue> inProgress = new ArrayList<>();
+        Map<UUID, Issue> unfinished = new LinkedHashMap<>();
         for (Issue issue : issueRepository.findByProjectIdAndDeletedAtIsNull(projectId)) {
-            if (issue.getStatus() == IssueStatus.IN_PROGRESS) {
-                inProgress.add(issue);
+            if (isUnfinished(issue.getStatus())) {
+                unfinished.put(issue.getId(), issue);
             }
-        }
-        List<PresenceResponse> result = new ArrayList<>();
-        if (inProgress.isEmpty()) {
-            return result;
-        }
-
-        Map<UUID, Issue> issueById = new HashMap<>();
-        List<UUID> issueIds = new ArrayList<>();
-        for (Issue issue : inProgress) {
-            issueById.put(issue.getId(), issue);
-            issueIds.add(issue.getId());
         }
 
         Map<UUID, List<IssueSummaryResponse>> workByUser = new LinkedHashMap<>();
-        for (IssueAssignee assignee : assigneeRepository.findByIssueIdIn(issueIds)) {
-            Issue issue = issueById.get(assignee.getIssueId());
-            if (issue == null) {
+        Map<UUID, Integer> remainingByUser = new HashMap<>();
+        if (!unfinished.isEmpty()) {
+            List<UUID> issueIds = new ArrayList<>(unfinished.keySet());
+            for (IssueAssignee assignee : assigneeRepository.findByIssueIdIn(issueIds)) {
+                Issue issue = unfinished.get(assignee.getIssueId());
+                if (issue == null) {
+                    continue;
+                }
+                UUID workerId = assignee.getUserId();
+
+                Integer remaining = remainingByUser.get(workerId);
+                if (remaining == null) {
+                    remaining = 0;
+                }
+                remainingByUser.put(workerId, remaining + 1);
+
+                if (issue.getStatus() == IssueStatus.IN_PROGRESS) {
+                    List<IssueSummaryResponse> work = workByUser.get(workerId);
+                    if (work == null) {
+                        work = new ArrayList<>();
+                        workByUser.put(workerId, work);
+                    }
+                    work.add(IssueSummaryResponse.builder()
+                            .id(issue.getId())
+                            .issueNumber(issue.getIssueNumber())
+                            .title(issue.getTitle())
+                            .status(issue.getStatus())
+                            .priority(issue.getPriority())
+                            .dueDate(issue.getDueDate())
+                            .build());
+                }
+            }
+        }
+
+        Map<UUID, List<PresenceSprintResponse>> sprintsByUser = new LinkedHashMap<>();
+        for (Sprint sprint : sprintRepository.findByProjectId(projectId)) {
+            UUID contributorId = sprint.getAssignedContributorId();
+            if (sprint.getStatus() != SprintStatus.ACTIVE || contributorId == null) {
                 continue;
             }
-            List<IssueSummaryResponse> work = workByUser.get(assignee.getUserId());
-            if (work == null) {
-                work = new ArrayList<>();
-                workByUser.put(assignee.getUserId(), work);
+            List<PresenceSprintResponse> list = sprintsByUser.get(contributorId);
+            if (list == null) {
+                list = new ArrayList<>();
+                sprintsByUser.put(contributorId, list);
             }
-            work.add(IssueSummaryResponse.builder()
-                    .id(issue.getId())
-                    .issueNumber(issue.getIssueNumber())
-                    .title(issue.getTitle())
-                    .status(issue.getStatus())
-                    .priority(issue.getPriority())
-                    .dueDate(issue.getDueDate())
+            list.add(PresenceSprintResponse.builder()
+                    .id(sprint.getId())
+                    .sprintNumber(sprint.getSprintNumber())
+                    .name(sprint.getName())
+                    .endDate(sprint.getEndDate())
                     .build());
         }
 
-        Map<UUID, String> names = userNames(workByUser.keySet());
-        for (UUID workerId : workByUser.keySet()) {
+        Set<UUID> present = new LinkedHashSet<>(workByUser.keySet());
+        present.addAll(sprintsByUser.keySet());
+
+        List<PresenceResponse> result = new ArrayList<>();
+        if (present.isEmpty()) {
+            return result;
+        }
+
+        Map<UUID, String> names = userNames(present);
+        for (UUID workerId : present) {
+            List<IssueSummaryResponse> working = workByUser.get(workerId);
+            if (working == null) {
+                working = new ArrayList<>();
+            }
+            List<PresenceSprintResponse> activeSprints = sprintsByUser.get(workerId);
+            if (activeSprints == null) {
+                activeSprints = new ArrayList<>();
+            }
+            int remaining = 0;
+            Integer remainingValue = remainingByUser.get(workerId);
+            if (remainingValue != null) {
+                remaining = remainingValue;
+            }
             result.add(PresenceResponse.builder()
                     .userId(workerId)
                     .name(names.get(workerId))
-                    .workingOn(workByUser.get(workerId))
+                    .workingOn(working)
+                    .activeSprints(activeSprints)
+                    .remainingTasks(remaining)
                     .build());
         }
         return result;
     }
+
 
     @Override
     public List<ActivityResponse> recentActivity(UUID projectId, UUID userId, int limit) {
@@ -156,7 +204,7 @@ public class ActivityServiceImpl implements ActivityService {
     @Override
     public byte[] summaryPdf(UUID projectId, UUID userId) {
         Project project = projectAccess.project(projectId);
-        projectAccess.require(project, userId, Role.PROJECT_MANAGER, Role.TEAM_LEAD,Role.ADMIN,Role.CONTRIBUTOR);
+        projectAccess.require(project, userId, Role.PROJECT_MANAGER, Role.TEAM_LEAD);
         return pdfBuilder.build(buildSummary(project));
     }
 
@@ -214,16 +262,17 @@ public class ActivityServiceImpl implements ActivityService {
             }
             if (!finished && due.isBefore(today)) {
                 overdue++;
-                delayed.add(delayedIssue(issue, ChronoUnit.DAYS.between(due, today), "OVERDUE"));
+                delayed.add(delayedIssue(issue, ChronoUnit.DAYS.between(due, today), "OVERDUE", null));
             } else if (finishedAt != null) {
                 LocalDate finishedDate = finishedAt.atZone(ZoneOffset.UTC).toLocalDate();
                 if (finishedDate.isAfter(due)) {
                     completedLate++;
                     delayed.add(delayedIssue(issue, ChronoUnit.DAYS.between(due, finishedDate),
-                            "COMPLETED_LATE"));
+                            "COMPLETED_LATE", finishedDate));
                 }
             }
         }
+        delayed.sort((a, b) -> Long.compare(b.getDaysLate(), a.getDaysLate()));
 
         int planned = 0;
         int active = 0;
@@ -244,23 +293,54 @@ public class ActivityServiceImpl implements ActivityService {
             }
         }
 
+        ProjectStatus projectStatus = project.getStatus();
+        LocalDate startDate = project.getStartDate();
+        LocalDate deadline = project.getDeadline();
+        LocalDate completeDate = project.getCompleteDate();
+
         boolean projectDelayed = false;
         long projectDaysLate = 0;
-        if (project.getDeadline() != null && project.getDeadline().isBefore(today)
-                && project.getStatus() != ProjectStatus.COMPLETED
-                && project.getStatus() != ProjectStatus.CANCELLED) {
-            projectDelayed = true;
-            projectDaysLate = ChronoUnit.DAYS.between(project.getDeadline(), today);
+        if (deadline != null) {
+            if (projectStatus == ProjectStatus.COMPLETED) {
+                if (completeDate != null && completeDate.isAfter(deadline)) {
+                    projectDelayed = true;
+                    projectDaysLate = ChronoUnit.DAYS.between(deadline, completeDate);
+                }
+            } else if (projectStatus != ProjectStatus.CANCELLED && deadline.isBefore(today)) {
+                projectDelayed = true;
+                projectDaysLate = ChronoUnit.DAYS.between(deadline, today);
+            }
         }
+
+        Long plannedDuration = null;
+        Long actualDuration = null;
+        if (startDate != null && deadline != null) {
+            plannedDuration = ChronoUnit.DAYS.between(startDate, deadline);
+        }
+        if (startDate != null) {
+            if (projectStatus == ProjectStatus.COMPLETED && completeDate != null) {
+                actualDuration = ChronoUnit.DAYS.between(startDate, completeDate);
+            } else if (projectStatus != ProjectStatus.COMPLETED && projectStatus != ProjectStatus.CANCELLED) {
+                actualDuration = ChronoUnit.DAYS.between(startDate, today);
+            }
+        }
+
+        String summaryText = summaryText(project, issues.size(), resolved + closed, overdue, completedLate,
+                projectDelayed, projectDaysLate);
 
         return ProjectSummaryResponse.builder()
                 .projectId(project.getId())
                 .projectName(project.getName())
-                .projectStatus(project.getStatus())
-                .deadline(project.getDeadline())
+                .projectStatus(projectStatus)
+                .generatedAt(Instant.now())
+                .summaryText(summaryText)
+                .startDate(startDate)
+                .deadline(deadline)
+                .completedDate(completeDate)
+                .plannedDurationDays(plannedDuration)
+                .actualDurationDays(actualDuration)
                 .projectDelayed(projectDelayed)
                 .projectDaysLate(projectDaysLate)
-                .generatedAt(Instant.now())
                 .totalIssues(issues.size())
                 .openIssues(open)
                 .inProgressIssues(inProgress)
@@ -281,13 +361,39 @@ public class ActivityServiceImpl implements ActivityService {
                 .build();
     }
 
-    private DelayedIssueResponse delayedIssue(Issue issue, long daysLate, String state) {
+    private String summaryText(Project project, int total, int finished, int overdue, int completedLate,
+                               boolean projectDelayed, long projectDaysLate) {
+        StringBuilder text = new StringBuilder();
+        text.append(project.getName()).append(" is ")
+                .append(String.valueOf(project.getStatus()).toLowerCase().replace('_', ' ')).append(". ");
+        text.append(finished).append(" of ").append(total).append(" issues are resolved or closed. ");
+        if (overdue > 0 || completedLate > 0) {
+            text.append(overdue).append(" issue(s) are overdue and ")
+                    .append(completedLate).append(" were completed late. ");
+        } else {
+            text.append("No issues are delayed. ");
+        }
+        if (projectDelayed) {
+            String verb = "is";
+            if (project.getStatus() == ProjectStatus.COMPLETED) {
+                verb = "was";
+            }
+            text.append("The project ").append(verb).append(" delayed by ")
+                    .append(projectDaysLate).append(" day(s) against its deadline.");
+        } else if (project.getDeadline() != null && project.getStatus() != ProjectStatus.CANCELLED) {
+            text.append("The project is on schedule against its deadline.");
+        }
+        return text.toString().trim();
+    }
+
+    private DelayedIssueResponse delayedIssue(Issue issue, long daysLate, String state, LocalDate completedDate) {
         return DelayedIssueResponse.builder()
                 .issueId(issue.getId())
                 .issueNumber(issue.getIssueNumber())
                 .title(issue.getTitle())
                 .status(issue.getStatus())
                 .dueDate(issue.getDueDate())
+                .completedDate(completedDate)
                 .daysLate(daysLate)
                 .state(state)
                 .build();
@@ -344,6 +450,10 @@ public class ActivityServiceImpl implements ActivityService {
             names.put(user.getId(), user.getName());
         }
         return names;
+    }
+
+    private boolean isUnfinished(IssueStatus status) {
+        return status != IssueStatus.RESOLVED && status != IssueStatus.CLOSED;
     }
 
     private double hoursBetween(Instant from, Instant to) {
