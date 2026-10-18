@@ -1,7 +1,8 @@
 package com.frietsync.backend.service.impl.project;
 
-import com.frietsync.backend.dto.project.MemberRequest;
 import com.frietsync.backend.dto.project.MemberResponse;
+import com.frietsync.backend.dto.project.ProjectInviteRequest;
+import com.frietsync.backend.dto.invite.InviteResponse;
 import com.frietsync.backend.dto.project.ProjectRequest;
 import com.frietsync.backend.dto.project.ProjectResponse;
 import com.frietsync.backend.entity.project.Project;
@@ -34,6 +35,7 @@ import com.frietsync.backend.repository.sprint.SprintRepository;
 import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.repository.workspace.WorkspaceRepository;
 import com.frietsync.backend.service.project.ProjectService;
+import com.frietsync.backend.service.invite.InviteService;
 import com.frietsync.backend.service.project.ReleaseService;
 import com.frietsync.backend.service.issue.IssueService;
 import com.frietsync.backend.service.impl.issue.IssueHistoryRecorder;
@@ -64,29 +66,47 @@ public class ProjectServiceImpl implements ProjectService {
     private final MilestoneRepository milestoneRepository;
     private final SprintRepository sprintRepository;
     private final SprintAssignmentRequestRepository sprintAssignmentRequestRepository;
+    private final WorkspaceRepository workspaceRepository;
+    private final InviteService inviteService;
     private final IssueService issueService;
     private final ReleaseService releaseService;
 
     @Override
     @Transactional
     public ProjectResponse create(ProjectRequest request, UUID userId) {
+        User admin = userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (admin.getRole() != Role.ADMIN) {
+            throw new ForbiddenException("Only workspace admins can create projects");
+        }
+        if (admin.getWorkspaceId() == null) {
+            throw new BadRequestException("Join or create a workspace before creating a project");
+        }
+        Workspace workspace = workspaceRepository.findByIdForUpdate(admin.getWorkspaceId())
+                .orElseThrow(() -> new BadRequestException("Workspace not found"));
+        if (!userId.equals(workspace.getAdminId())) {
+            throw new ForbiddenException("Only the workspace admin can create projects");
+        }
         Project project = new Project();
         project.setCreatedBy(userId);
-        project.setAdminId(userId);
-        apply(project, request, userId);
-        return toResponse(projectRepository.save(project));
+        project.setWorkspaceId(workspace.getId());
+        project.setAdminId(workspace.getAdminId());
+        apply(project, request, workspace.getId());
+        return ProjectResponse.fromEntity(projectRepository.save(project));
     }
 
     private UUID findProjectManagerId(String email, UUID workspaceId) {
         if (email == null || email.isBlank()) {
-            throw new BadRequestException("Project manager email is required");
+            return null;
         }
         User manager = userRepository.findByEmailIgnoreCase(email.trim())
                 .orElseThrow(() -> new BadRequestException("No user found with email: " + email));
         if (manager.getRole() != Role.PROJECT_MANAGER) {
             throw new BadRequestException("Selected user must have the PROJECT_MANAGER role");
         }
-        requireSameWorkspace(manager, workspaceId, "Project manager");
+        if (!workspaceId.equals(manager.getWorkspaceId())) {
+            throw new BadRequestException("Project manager must belong to the project's workspace");
+        }
         return manager.getId();
     }
     @Override
@@ -109,7 +129,8 @@ public class ProjectServiceImpl implements ProjectService {
     @Override
     @Transactional
     public ProjectResponse update(UUID projectId, ProjectRequest request, UUID userId) {
-        Project project = find(projectId);
+        Project project = projectRepository.findByIdForUpdate(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
         boolean canEdit = userId.equals(project.getAdminId())
                 || userId.equals(project.getProjectManagerId());
         if (!canEdit) {
@@ -174,7 +195,7 @@ public class ProjectServiceImpl implements ProjectService {
         }
         project.setName(request.getName().trim());
         project.setDescription(request.getDescription());
-        project.setWorkspaceId(request.getWorkspaceId());
+        project.setWorkspaceId(workspaceId);
         project.setStartDate(request.getStartDate());
         project.setDeadline(request.getDeadline());
         if (request.getStatus() != null) {
@@ -201,14 +222,10 @@ public class ProjectServiceImpl implements ProjectService {
         if (teamLead.getRole() != Role.TEAM_LEAD) {
             throw new BadRequestException("Selected user must have the TEAM_LEAD role");
         }
-        requireSameWorkspace(teamLead, workspaceId, "Team lead");
-        return teamLead.getId();
-    }
-
-    private void requireSameWorkspace(User user, UUID workspaceId, String userLabel) {
-        if (!workspaceId.equals(user.getWorkspaceId())) {
-            throw new BadRequestException(userLabel + " must belong to the project's workspace");
+        if (!workspaceId.equals(teamLead.getWorkspaceId())) {
+            throw new BadRequestException("Team lead must belong to the project's workspace");
         }
+        return teamLead.getId();
     }
     @Override
     public List<MemberResponse> getMembers(UUID projectId, UUID userId) {
@@ -216,14 +233,17 @@ public class ProjectServiceImpl implements ProjectService {
         if (!isInvolved(project, userId)) {
             throw new ForbiddenException("You don't have access to this project");
         }
-        List<MemberResponse> responses = new ArrayList<>();
+        Map<UUID, MemberResponse> responses = new LinkedHashMap<>();
+        addProjectUser(responses, project.getAdminId(), Role.ADMIN);
+        addProjectUser(responses, project.getProjectManagerId(), Role.PROJECT_MANAGER);
+        addProjectUser(responses, project.getTeamLeadId(), Role.TEAM_LEAD);
         for (ProjectMember member : projectMemberRepository.findByProjectId(projectId)) {
             User user = userRepository.findById(member.getUserId()).orElse(null);
-            if (user != null) {
-                responses.add(toMemberResponse(user, member.getRole()));
+            if (user != null && !responses.containsKey(user.getId())) {
+                responses.put(user.getId(), toMemberResponse(user, member.getRole()));
             }
         }
-        return responses;
+        return new ArrayList<>(responses.values());
     }
 
     @Override
@@ -267,22 +287,32 @@ public class ProjectServiceImpl implements ProjectService {
         if (!userId.equals(project.getAdminId())) {
             throw new ForbiddenException("Only the admin can remove members");
         }
-        ProjectMember member = projectMemberRepository.findByProjectIdAndUserId(projectId, memberUserId)
-                .orElseThrow(() -> new ResourceNotFoundException("Member not found in this project"));
         if (sprintRepository.existsByProjectIdAndAssignedContributorId(projectId, memberUserId)) {
             throw new BadRequestException(
                     "Cannot remove a member while they are assigned to a sprint. Reassign the sprint first.");
         }
-        sprintAssignmentRequestRepository.deletePendingForProjectMember(
-                projectId, memberUserId, SprintAssignmentRequestStatus.PENDING);
-        clearIssueAssignments(projectId, memberUserId, userId);
-        rejectPendingIssueRequests(projectId, memberUserId, userId);
-        projectMemberRepository.delete(member);
+        if (memberUserId.equals(project.getProjectManagerId())) {
+            project.setProjectManagerId(null);
+        } else if (memberUserId.equals(project.getTeamLeadId())) {
+            project.setTeamLeadId(null);
+        } else {
+            ProjectMember member = projectMemberRepository.findByProjectIdAndUserId(projectId, memberUserId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Member not found in this project"));
+            sprintAssignmentRequestRepository.deletePendingForProjectMember(
+                    projectId, memberUserId, SprintAssignmentRequestStatus.PENDING);
+            projectMemberRepository.delete(member);
+        }
 
         updateTeamSize(project);
         projectRepository.save(project);
     }
 
+    private void addProjectUser(Map<UUID, MemberResponse> responses, UUID userId, Role role) {
+        if (userId == null) {
+            return;
+        }
+        userRepository.findById(userId)
+                .ifPresent(user -> responses.putIfAbsent(userId, toMemberResponse(user, role)));
     private void clearIssueAssignments(UUID projectId, UUID memberUserId, UUID actorId) {
         List<UUID> issueIds = issueRepository.findByProjectIdAndDeletedAtIsNull(projectId).stream()
                 .map(Issue::getId)
