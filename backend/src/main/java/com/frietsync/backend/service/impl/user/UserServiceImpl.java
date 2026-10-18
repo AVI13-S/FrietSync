@@ -199,6 +199,8 @@ public class UserServiceImpl implements UserService {
         accountCleanupRepository.deletePollVotes(userId);
         accountCleanupRepository.deleteNotifications(userId);
         accountCleanupRepository.deleteNotificationPreferences(userId);
+        accountCleanupRepository.deleteIssueComments(userId);
+        accountCleanupRepository.deleteSprintComments(userId);
         accountCleanupRepository.deleteInvites(userId);
         accountCleanupRepository.replaceProjectUserReferences(userId, attributionId);
         accountCleanupRepository.clearSprintAssignment(userId);
