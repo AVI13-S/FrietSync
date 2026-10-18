@@ -47,6 +47,14 @@ public interface AccountCleanupRepository extends Repository<User, UUID> {
     void deleteNotificationPreferences(@Param("userId") UUID userId);
 
     @Modifying
+    @Query("delete from IssueComment c where c.userId = :userId")
+    void deleteIssueComments(@Param("userId") UUID userId);
+
+    @Modifying
+    @Query("delete from SprintComment c where c.userId = :userId")
+    void deleteSprintComments(@Param("userId") UUID userId);
+
+    @Modifying
     @Query("delete from Invite i where i.invitedBy = :userId")
     void deleteInvites(@Param("userId") UUID userId);
 

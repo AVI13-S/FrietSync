@@ -21,6 +21,7 @@ import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.MilestoneRepository;
 import com.frietsync.backend.repository.sprint.SprintAssignmentRequestRepository;
 import com.frietsync.backend.repository.sprint.SprintRepository;
+import com.frietsync.backend.repository.sprint.SprintCommentRepository;
 import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.service.sprint.SprintService;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +43,7 @@ public class SprintServiceImpl implements SprintService {
     private final MilestoneRepository milestoneRepository;
     private final UserRepository userRepository;
     private final SprintAssignmentRequestRepository assignmentRequestRepository;
+    private final SprintCommentRepository sprintCommentRepository;
 
     @Override
     @Transactional
@@ -150,6 +152,7 @@ public class SprintServiceImpl implements SprintService {
         Sprint sprint = findSprintOrThrow(sprintId);
         requireProjectManager(sprint.getProjectId(), currentUserId);
         assignmentRequestRepository.deleteBySprintId(sprintId);
+        sprintCommentRepository.deleteBySprintId(sprintId);
         sprintRepository.delete(sprint);
     }
 
