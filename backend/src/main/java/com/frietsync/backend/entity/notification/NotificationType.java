@@ -15,5 +15,8 @@ public enum NotificationType {
     MENTION,
     SPRINT_ASSIGNED,
     MEETING_INVITE,
-    POLL_CREATED
+    POLL_CREATED,
+    INVITE_RECEIVED,
+    INVITE_ACCEPTED,
+    CHAT_MESSAGE
 }

@@ -43,12 +43,12 @@ public class Invite extends BaseEntity {
     @Column(name = "workspace_id", nullable = false)
     private UUID workspaceId;
 
+    @Column(name = "project_id")
+    private UUID projectId;
+
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 
     @Column(name = "accepted_at", nullable = true)
     private Instant acceptedAt;
-
-    @Column(name = "project_id")
-    private UUID projectId;
 }

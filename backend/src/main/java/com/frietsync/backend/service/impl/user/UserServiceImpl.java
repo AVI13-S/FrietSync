@@ -10,6 +10,7 @@ import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.exception.StorageServiceException;
 import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.repository.user.AccountCleanupRepository;
+import com.frietsync.backend.repository.issue.IssueAttachmentRepository;
 import com.frietsync.backend.repository.workspace.WorkspaceRepository;
 import com.frietsync.backend.service.impl.issue.S3ObjectCleanupService;
 import com.frietsync.backend.service.impl.storage.S3UploadValidator;
@@ -45,6 +46,7 @@ public class UserServiceImpl implements UserService {
     private final S3Presigner s3Presigner;
     private final S3ObjectCleanupService cleanupService;
     private final AccountCleanupRepository accountCleanupRepository;
+    private final IssueAttachmentRepository issueAttachmentRepository;
 
     @Value("${aws.s3.bucket:}")
     private String bucketName;
@@ -190,6 +192,23 @@ public class UserServiceImpl implements UserService {
         }
 
         UUID attributionId = replacementId;
+        accountCleanupRepository.deleteGoogleOAuthStates(userId);
+        accountCleanupRepository.deleteGoogleConnection(userId);
+        accountCleanupRepository.deleteOtpsForEmail(user.getEmail());
+        accountCleanupRepository.deleteInvitesForEmail(user.getEmail());
+        accountCleanupRepository.deleteProjectDocumentsCreatedBy(userId);
+        accountCleanupRepository.clearProjectDocumentEditor(userId);
+        accountCleanupRepository.clearRepliesToUserMessages(userId);
+        accountCleanupRepository.deleteChatMessages(userId);
+        accountCleanupRepository.deleteIssueHistoryByActor(userId);
+        accountCleanupRepository.deleteIssueLinksCreatedBy(userId);
+
+        var uploadedAttachments = issueAttachmentRepository.findByUploadedBy(userId);
+        for (var attachment : uploadedAttachments) {
+            enqueueStoredFileDeletion(attachment.getStorageKey());
+        }
+        issueAttachmentRepository.deleteAll(uploadedAttachments);
+
         accountCleanupRepository.deleteProjectMemberships(userId);
         accountCleanupRepository.clearIssueAssigner(userId);
         accountCleanupRepository.deleteIssueAssignments(userId);
@@ -199,17 +218,15 @@ public class UserServiceImpl implements UserService {
         accountCleanupRepository.deletePollVotes(userId);
         accountCleanupRepository.deleteNotifications(userId);
         accountCleanupRepository.deleteNotificationPreferences(userId);
+        accountCleanupRepository.deleteIssueComments(userId);
+        accountCleanupRepository.deleteSprintComments(userId);
         accountCleanupRepository.deleteInvites(userId);
         accountCleanupRepository.replaceProjectUserReferences(userId, attributionId);
         accountCleanupRepository.clearSprintAssignment(userId);
         accountCleanupRepository.replaceMeetingOrganizer(userId, attributionId);
-        accountCleanupRepository.replaceChatSender(userId, attributionId);
         accountCleanupRepository.replaceIssueCreator(userId, attributionId);
         accountCleanupRepository.replaceSprintCreator(userId, attributionId);
         accountCleanupRepository.replacePollCreator(userId, attributionId);
-        accountCleanupRepository.replaceIssueLinkCreator(userId, attributionId);
-        accountCleanupRepository.replaceAttachmentUploader(userId, attributionId);
-        accountCleanupRepository.replaceIssueHistoryActor(userId, attributionId);
         accountCleanupRepository.clearIssueDecisionMaker(userId);
         accountCleanupRepository.clearSprintReviewer(userId);
         accountCleanupRepository.clearNotificationActor(userId);

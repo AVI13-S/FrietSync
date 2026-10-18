@@ -47,8 +47,57 @@ public interface AccountCleanupRepository extends Repository<User, UUID> {
     void deleteNotificationPreferences(@Param("userId") UUID userId);
 
     @Modifying
+    @Query("delete from IssueComment c where c.userId = :userId")
+    void deleteIssueComments(@Param("userId") UUID userId);
+
+    @Modifying
+    @Query("delete from SprintComment c where c.userId = :userId")
+    void deleteSprintComments(@Param("userId") UUID userId);
+
+    @Modifying
     @Query("delete from Invite i where i.invitedBy = :userId")
     void deleteInvites(@Param("userId") UUID userId);
+
+    @Modifying
+    @Query("delete from Invite i where lower(i.email) = lower(:email)")
+    void deleteInvitesForEmail(@Param("email") String email);
+
+    @Modifying
+    @Query("delete from Otp o where lower(o.email) = lower(:email)")
+    void deleteOtpsForEmail(@Param("email") String email);
+
+    @Modifying
+    @Query("delete from GoogleOAuthState s where s.user.id = :userId")
+    void deleteGoogleOAuthStates(@Param("userId") UUID userId);
+
+    @Modifying
+    @Query("delete from GoogleConnection c where c.user.id = :userId")
+    void deleteGoogleConnection(@Param("userId") UUID userId);
+
+    @Modifying
+    @Query("delete from ProjectDocument d where d.createdBy = :userId")
+    void deleteProjectDocumentsCreatedBy(@Param("userId") UUID userId);
+
+    @Modifying
+    @Query("update ProjectDocument d set d.lastEditedBy = d.createdBy "
+            + "where d.lastEditedBy = :userId and d.createdBy <> :userId")
+    void clearProjectDocumentEditor(@Param("userId") UUID userId);
+
+    @Modifying
+    @Query("update ChatMessage m set m.replyTo = null where m.replyTo.senderId = :userId")
+    void clearRepliesToUserMessages(@Param("userId") UUID userId);
+
+    @Modifying
+    @Query("delete from ChatMessage m where m.senderId = :userId")
+    void deleteChatMessages(@Param("userId") UUID userId);
+
+    @Modifying
+    @Query("delete from IssueHistory h where h.actorId = :userId")
+    void deleteIssueHistoryByActor(@Param("userId") UUID userId);
+
+    @Modifying
+    @Query("delete from IssueLink l where l.createdBy = :userId")
+    void deleteIssueLinksCreatedBy(@Param("userId") UUID userId);
 
     @Modifying
     @Query("update Project p set p.adminId = :replacementId, p.projectManagerId = case when p.projectManagerId = :userId then :replacementId else p.projectManagerId end, p.teamLeadId = case when p.teamLeadId = :userId then :replacementId else p.teamLeadId end, p.createdBy = :replacementId where p.adminId = :userId or p.projectManagerId = :userId or p.teamLeadId = :userId or p.createdBy = :userId")
@@ -63,10 +112,6 @@ public interface AccountCleanupRepository extends Repository<User, UUID> {
     void replaceMeetingOrganizer(@Param("userId") UUID userId, @Param("replacementId") UUID replacementId);
 
     @Modifying
-    @Query("update ChatMessage m set m.senderId = :replacementId, m.senderName = 'Deleted user' where m.senderId = :userId")
-    void replaceChatSender(@Param("userId") UUID userId, @Param("replacementId") UUID replacementId);
-
-    @Modifying
     @Query("update Issue i set i.createdBy = :replacementId where i.createdBy = :userId")
     void replaceIssueCreator(@Param("userId") UUID userId, @Param("replacementId") UUID replacementId);
 
@@ -77,18 +122,6 @@ public interface AccountCleanupRepository extends Repository<User, UUID> {
     @Modifying
     @Query("update Poll p set p.createdBy = :replacementId where p.createdBy = :userId")
     void replacePollCreator(@Param("userId") UUID userId, @Param("replacementId") UUID replacementId);
-
-    @Modifying
-    @Query("update IssueLink l set l.createdBy = :replacementId where l.createdBy = :userId")
-    void replaceIssueLinkCreator(@Param("userId") UUID userId, @Param("replacementId") UUID replacementId);
-
-    @Modifying
-    @Query("update IssueAttachment a set a.uploadedBy = :replacementId where a.uploadedBy = :userId")
-    void replaceAttachmentUploader(@Param("userId") UUID userId, @Param("replacementId") UUID replacementId);
-
-    @Modifying
-    @Query("update IssueHistory h set h.actorId = :replacementId where h.actorId = :userId")
-    void replaceIssueHistoryActor(@Param("userId") UUID userId, @Param("replacementId") UUID replacementId);
 
     @Modifying
     @Query("update IssueAssignmentRequest r set r.decidedBy = null where r.decidedBy = :userId")

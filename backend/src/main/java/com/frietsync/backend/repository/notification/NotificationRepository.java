@@ -1,6 +1,7 @@
 package com.frietsync.backend.repository.notification;
 
 import com.frietsync.backend.entity.notification.Notification;
+import com.frietsync.backend.entity.notification.NotificationType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -21,6 +22,13 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     long countByUserIdAndSeen(UUID userId, boolean seen);
 
     Optional<Notification> findByIdAndUserId(UUID id, UUID userId);
+
+    @Modifying
+    @Query("delete from Notification n where n.userId = :userId and n.type = :type "
+            + "and n.projectId = :projectId and n.seen = false")
+    int deleteUnreadByUserAndTypeAndProject(@Param("userId") UUID userId,
+                                            @Param("type") NotificationType type,
+                                            @Param("projectId") UUID projectId);
 
     @Modifying(clearAutomatically = true)
     @Query("update Notification n set n.seen = true, n.readAt = :now "

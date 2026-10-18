@@ -23,7 +23,7 @@ public class EmailServiceImpl implements EmailService {
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
             helper.setTo(details.getRecipient());
             helper.setSubject(details.getSubject());
-            helper.setText(details.getMsgBody(), formatHtml(details.getSubject(), details.getMsgBody()));
+            helper.setText(details.getMsgBody(), formatHtml(details));
             javaMailSender.send(message);
         } catch (MessagingException exception) {
             throw new IllegalStateException("Could not prepare email message", exception);
@@ -41,17 +41,25 @@ public class EmailServiceImpl implements EmailService {
 
     @Override
     @Async
-    public void sendInviteMail(String recipient, String role) {
+    public void sendInviteMail(String recipient, String role, String inviteUrl) {
         EmailDetails details = new EmailDetails();
         details.setRecipient(recipient);
         details.setSubject("You're invited to FrietSync");
         details.setMsgBody("You have been invited to join FrietSync as a " + role + ".");
+        details.setActionUrl(inviteUrl);
+        details.setActionLabel("View your invite");
         sendSimpleMail(details);
     }
 
-    private String formatHtml(String subject, String body) {
-        String safeSubject = escapeHtml(subject);
-        String formattedBody = escapeHtml(body).replace("\r\n", "\n").replace("\n", "<br>");
+    private String formatHtml(EmailDetails details) {
+        String safeSubject = escapeHtml(details.getSubject());
+        String formattedBody = escapeHtml(details.getMsgBody()).replace("\r\n", "\n").replace("\n", "<br>");
+        String action = details.getActionUrl() == null || details.getActionUrl().isBlank()
+                ? ""
+                : "<p style=\"margin:24px 0 0;\"><a href=\"" + escapeHtml(details.getActionUrl())
+                + "\" style=\"display:inline-block;padding:12px 20px;background:#173b35;color:#ffffff;"
+                + "text-decoration:none;border-radius:6px;font-weight:bold;\">"
+                + escapeHtml(details.getActionLabel()) + "</a></p>";
         return """
                 <!doctype html>
                 <html lang="en">
@@ -62,12 +70,13 @@ public class EmailServiceImpl implements EmailService {
                     <tr><td style="padding:32px;">
                       <h1 style="margin:0 0 20px;font-size:22px;line-height:1.35;color:#202735;">%s</h1>
                       <p style="margin:0;font-size:15px;line-height:1.7;color:#465064;">%s</p>
+                      %s
                     </td></tr>
                     <tr><td style="padding:18px 32px;border-top:1px solid #e9edf2;color:#7a8494;font-size:12px;line-height:1.5;">This is an automated message from FrietSync. Please do not reply to this email.</td></tr>
                   </table>
                 </body>
                 </html>
-                """.formatted(safeSubject, formattedBody);
+                """.formatted(safeSubject, formattedBody, action);
     }
 
     private String escapeHtml(String value) {

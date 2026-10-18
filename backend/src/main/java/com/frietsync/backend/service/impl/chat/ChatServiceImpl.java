@@ -13,6 +13,7 @@ import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
 import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.service.chat.ChatService;
+import com.frietsync.backend.service.notification.NotificationPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -23,6 +24,8 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -35,11 +38,14 @@ public class ChatServiceImpl implements ChatService {
     private final ProjectMemberRepository projectMemberRepository;
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
+    private final NotificationPublisher notificationPublisher;
 
     @Override
     @Transactional
     public ChatMessageResponse sendMessage(UUID projectId, UUID senderId, ChatMessageRequest request) {
         assertProjectAccess(projectId, senderId);
+        Project project = projectRepository.findByIdForUpdate(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
         String content = request.getContent();
         if (!StringUtils.hasText(content) || content.length() > MAX_MESSAGE_LENGTH) {
             throw new BadRequestException("Message must contain 1 to 2000 characters");
@@ -52,7 +58,26 @@ public class ChatServiceImpl implements ChatService {
         message.setSenderId(senderId);
         message.setSenderName(sender.getName());
         message.setContent(content.trim());
-        return ChatMessageResponse.fromEntity(chatMessageRepository.save(message));
+        ChatMessage savedMessage = chatMessageRepository.save(message);
+
+        Set<UUID> recipients = new LinkedHashSet<>();
+        recipients.add(project.getCreatedBy());
+        recipients.add(project.getAdminId());
+        if (project.getProjectManagerId() != null) {
+            recipients.add(project.getProjectManagerId());
+        }
+        if (project.getTeamLeadId() != null) {
+            recipients.add(project.getTeamLeadId());
+        }
+        projectMemberRepository.findByProjectId(projectId)
+                .forEach(member -> recipients.add(member.getUserId()));
+
+        String title = "New message in " + project.getName();
+        String notificationMessage = sender.getName() + " sent a message in " + project.getName() + ".";
+        recipients.forEach(recipientId -> notificationPublisher.publishChatMessage(
+                recipientId, title, notificationMessage, projectId, senderId));
+
+        return ChatMessageResponse.fromEntity(savedMessage);
     }
 
     @Override

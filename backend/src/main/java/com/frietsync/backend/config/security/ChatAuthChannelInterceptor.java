@@ -2,6 +2,7 @@ package com.frietsync.backend.config.security;
 
 import com.frietsync.backend.entity.user.User;
 import com.frietsync.backend.repository.user.UserRepository;
+import com.frietsync.backend.repository.poll.PollRepository;
 import com.frietsync.backend.service.chat.ChatService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
@@ -28,10 +29,12 @@ public class ChatAuthChannelInterceptor implements ChannelInterceptor {
     private static final String SEND_PREFIX = "/app/projects/";
     private static final String CHAT_SUFFIX = "/chat";
     private static final String TOPIC_PREFIX = "/topic/projects/";
+    private static final String NOTIFICATION_DESTINATION = "/user/queue/notifications";
 
     private final ChatService chatService;
     private final JwtUtil jwtUtil;
     private final UserRepository userRepository;
+    private final PollRepository pollRepository;
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
@@ -43,10 +46,10 @@ public class ChatAuthChannelInterceptor implements ChannelInterceptor {
         if (accessor.getCommand() == StompCommand.CONNECT) {
             authenticate(accessor);
         } else if (accessor.getCommand() == StompCommand.SUBSCRIBE) {
-            chatService.assertProjectAccess(
-                    projectId(accessor.getDestination(), TOPIC_PREFIX),
-                    userId(accessor)
-            );
+            UUID userId = userId(accessor);
+            if (!NOTIFICATION_DESTINATION.equals(accessor.getDestination())) {
+                chatService.assertProjectAccess(subscriptionProjectId(accessor.getDestination()), userId);
+            }
         } else if (accessor.getCommand() == StompCommand.SEND) {
             chatService.assertProjectAccess(
                     projectId(accessor.getDestination(), SEND_PREFIX),
@@ -106,5 +109,34 @@ public class ChatAuthChannelInterceptor implements ChannelInterceptor {
         } catch (IllegalArgumentException ex) {
             throw new AccessDeniedException("Invalid project identifier", ex);
         }
+    }
+
+    private UUID subscriptionProjectId(String destination) {
+        String pollResultsPrefix = "/topic/polls/";
+        String pollResultsSuffix = "/results";
+        if (destination != null && destination.startsWith(pollResultsPrefix)
+                && destination.endsWith(pollResultsSuffix)) {
+            String value = destination.substring(pollResultsPrefix.length(),
+                    destination.length() - pollResultsSuffix.length());
+            try {
+                if (value.isBlank() || value.contains("/")) throw new IllegalArgumentException();
+                UUID pollId = UUID.fromString(value);
+                return pollRepository.findById(pollId)
+                        .map(poll -> poll.getProjectId())
+                        .orElseThrow(() -> new AccessDeniedException("Poll not found"));
+            } catch (IllegalArgumentException ex) {
+                throw new AccessDeniedException("Invalid poll identifier", ex);
+            }
+        }
+        if (destination != null && destination.startsWith(TOPIC_PREFIX) && destination.endsWith("/polls")) {
+            String value = destination.substring(TOPIC_PREFIX.length(), destination.length() - "/polls".length());
+            try {
+                if (value.isBlank() || value.contains("/")) throw new IllegalArgumentException();
+                return UUID.fromString(value);
+            } catch (IllegalArgumentException ex) {
+                throw new AccessDeniedException("Invalid project identifier", ex);
+            }
+        }
+        return projectId(destination, TOPIC_PREFIX);
     }
 }
