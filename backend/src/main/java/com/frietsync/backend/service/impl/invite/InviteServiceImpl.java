@@ -178,7 +178,6 @@ public class InviteServiceImpl implements InviteService {
         String inviteType = switch (purpose) {
             case WORKSPACE_INVITE -> invite.getRole().name();
             case OWNERSHIP_TRANSFER -> "OWNERSHIP_TRANSFER";
-            case PROJECT_INVITE -> "PROJECT_INVITE";
         };
 
         emailService.sendInviteMail(email, inviteType);
@@ -297,8 +296,11 @@ public class InviteServiceImpl implements InviteService {
                 .orElseThrow(() -> new BadRequestException("Invite not found"));
 
         if (!invite.getEmail().equalsIgnoreCase(user.getEmail())) {
-            throw new BadRequestException("This invite does not belong to your account");
+            throw new BadRequestException(
+                    "This invite does not belong to your account"
+            );
         }
+
         if (invite.getStatus() != InviteStatus.PENDING) {
             throw new BadRequestException("This invite is no longer pending");
         }

@@ -8,13 +8,26 @@ import com.frietsync.backend.dto.project.ProjectResponse;
 import com.frietsync.backend.entity.project.Project;
 import com.frietsync.backend.entity.project.ProjectMember;
 import com.frietsync.backend.entity.project.ProjectStatus;
+import com.frietsync.backend.entity.issue.AssignmentRequestStatus;
+import com.frietsync.backend.entity.issue.IssueAssignee;
+import com.frietsync.backend.entity.issue.Issue;
+import com.frietsync.backend.entity.issue.IssueAssignmentRequest;
+import com.frietsync.backend.entity.issue.IssueHistoryAction;
 import com.frietsync.backend.entity.sprint.SprintAssignmentRequestStatus;
+import com.frietsync.backend.entity.sprint.SprintStatus;
 import com.frietsync.backend.entity.user.Role;
 import com.frietsync.backend.entity.user.User;
 import com.frietsync.backend.entity.workspace.Workspace;
 import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.exception.ForbiddenException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
+import com.frietsync.backend.repository.chat.ChatMessageRepository;
+import com.frietsync.backend.repository.meeting.MeetingAttendeeRepository;
+import com.frietsync.backend.repository.meeting.MeetingRepository;
+import com.frietsync.backend.repository.issue.IssueAssigneeRepository;
+import com.frietsync.backend.repository.issue.IssueAssignmentRequestRepository;
+import com.frietsync.backend.repository.issue.IssueRepository;
+import com.frietsync.backend.repository.project.MilestoneRepository;
 import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
 import com.frietsync.backend.repository.sprint.SprintAssignmentRequestRepository;
@@ -23,10 +36,14 @@ import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.repository.workspace.WorkspaceRepository;
 import com.frietsync.backend.service.project.ProjectService;
 import com.frietsync.backend.service.invite.InviteService;
+import com.frietsync.backend.service.project.ReleaseService;
+import com.frietsync.backend.service.issue.IssueService;
+import com.frietsync.backend.service.impl.issue.IssueHistoryRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Stream;
@@ -37,11 +54,22 @@ public class ProjectServiceImpl implements ProjectService {
 
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
+    private final IssueRepository issueRepository;
+    private final IssueAssigneeRepository issueAssigneeRepository;
+    private final IssueAssignmentRequestRepository issueAssignmentRequestRepository;
+    private final IssueHistoryRecorder issueHistoryRecorder;
+    private final WorkspaceRepository workspaceRepository;
     private final ProjectMemberRepository projectMemberRepository;
+    private final ChatMessageRepository chatMessageRepository;
+    private final MeetingRepository meetingRepository;
+    private final MeetingAttendeeRepository meetingAttendeeRepository;
+    private final MilestoneRepository milestoneRepository;
     private final SprintRepository sprintRepository;
     private final SprintAssignmentRequestRepository sprintAssignmentRequestRepository;
     private final WorkspaceRepository workspaceRepository;
     private final InviteService inviteService;
+    private final IssueService issueService;
+    private final ReleaseService releaseService;
 
     @Override
     @Transactional
@@ -83,9 +111,11 @@ public class ProjectServiceImpl implements ProjectService {
     }
     @Override
     public List<ProjectResponse> myProjects(UUID userId) {
-        return projectRepository.findAllForUser(userId).stream()
-                .map(ProjectResponse::fromEntity)
-                .toList();
+        List<ProjectResponse> responses = new ArrayList<>();
+        for (Project project : projectRepository.findAllForUser(userId)) {
+            responses.add(toResponse(project));
+        }
+        return responses;
     }
     @Override
     public ProjectResponse get(UUID projectId, UUID userId) {
@@ -93,9 +123,10 @@ public class ProjectServiceImpl implements ProjectService {
         if (!isInvolved(project, userId)) {
             throw new ForbiddenException("You don't have access to this project");
         }
-        return ProjectResponse.fromEntity(project);
+        return toResponse(project);
     }
 
+    @Override
     @Transactional
     public ProjectResponse update(UUID projectId, ProjectRequest request, UUID userId) {
         Project project = projectRepository.findByIdForUpdate(projectId)
@@ -105,8 +136,19 @@ public class ProjectServiceImpl implements ProjectService {
         if (!canEdit) {
             throw new ForbiddenException("Only the admin or project manager can edit this project");
         }
-        apply(project, request, project.getWorkspaceId());
-        return ProjectResponse.fromEntity(projectRepository.save(project));
+        apply(project, request, userId);
+        return toResponse(projectRepository.save(project));
+    }
+
+    private ProjectResponse toResponse(Project project) {
+        long totalSprints = sprintRepository.countByProjectId(project.getId());
+        long completedSprints = sprintRepository.countByProjectIdAndStatus(
+                project.getId(), SprintStatus.COMPLETED);
+        double progress = 0;
+        if (totalSprints > 0) {
+            progress = completedSprints * 100.0 / totalSprints;
+        }
+        return ProjectResponse.fromEntity(project, progress);
     }
 
     @Override
@@ -118,6 +160,12 @@ public class ProjectServiceImpl implements ProjectService {
         }
         sprintAssignmentRequestRepository.deleteAllForProject(projectId);
         sprintRepository.deleteByProjectId(projectId);
+        issueService.deleteAllForProject(projectId);
+        chatMessageRepository.deleteByProjectId(projectId);
+        meetingAttendeeRepository.deleteByProjectId(projectId);
+        meetingRepository.deleteByProjectId(projectId);
+        releaseService.deleteAllForProject(projectId);
+        milestoneRepository.deleteByProjectId(projectId);
         projectMemberRepository.deleteAll(projectMemberRepository.findByProjectId(projectId));
         projectRepository.delete(project);
     }
@@ -131,7 +179,16 @@ public class ProjectServiceImpl implements ProjectService {
                 .anyMatch(userId::equals);
         return leader || projectMemberRepository.existsByProjectIdAndUserId(p.getId(), userId);
     }
-    private void apply(Project project, ProjectRequest request, UUID workspaceId) {
+    private void apply(Project project, ProjectRequest request, UUID actorId) {
+        UUID workspaceId = request.getWorkspaceId();
+        if (workspaceId == null) {
+            throw new BadRequestException("Workspace ID is required for a project");
+        }
+        workspaceRepository.findById(workspaceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Workspace not found"));
+        User actor = userRepository.findById(actorId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        requireSameWorkspace(actor, workspaceId, "You");
         if (request.getStartDate() != null && request.getDeadline() != null
                 && request.getDeadline().isBefore(request.getStartDate())) {
             throw new BadRequestException("Deadline cannot be before start date");
@@ -155,6 +212,7 @@ public class ProjectServiceImpl implements ProjectService {
         project.setTeamLeadId(findTeamLeadId(request.getTeamLeadEmail(), workspaceId));
         updateTeamSize(project);
     }
+
     private UUID findTeamLeadId(String email, UUID workspaceId) {
         if (email == null || email.isBlank()) {
             return null;
@@ -189,8 +247,37 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    public InviteResponse inviteMember(UUID projectId, ProjectInviteRequest request, UUID userId) {
-        return inviteService.createProjectInvite(projectId, request, userId);
+    @Transactional
+    public MemberResponse addMember(UUID projectId, MemberRequest request, UUID userId) {
+        Project project = find(projectId);
+        if (!userId.equals(project.getAdminId())) {
+            throw new ForbiddenException("Only the admin can add members");
+        }
+        if (request.getRole() == Role.ADMIN || request.getRole() == Role.PROJECT_MANAGER) {
+            throw new BadRequestException("Project role cannot be ADMIN or PROJECT_MANAGER");
+        }
+        if (project.getWorkspaceId() == null) {
+            throw new BadRequestException("Project must belong to a workspace before adding members");
+        }
+        User actor = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        requireSameWorkspace(actor, project.getWorkspaceId(), "You");
+        User user = userRepository.findByEmailIgnoreCase(request.getEmail().trim())
+                .orElseThrow(() -> new BadRequestException("No user found with email: " + request.getEmail()));
+        requireSameWorkspace(user, project.getWorkspaceId(), "Project member");
+        if (projectMemberRepository.existsByProjectIdAndUserId(projectId, user.getId())) {
+            throw new BadRequestException("User is already a member of this project");
+        }
+
+        ProjectMember member = new ProjectMember();
+        member.setProjectId(projectId);
+        member.setUserId(user.getId());
+        member.setRole(request.getRole());
+        projectMemberRepository.save(member);
+
+        updateTeamSize(project);
+        projectRepository.save(project);
+        return toMemberResponse(user, member.getRole());
     }
 
     @Override
@@ -226,6 +313,37 @@ public class ProjectServiceImpl implements ProjectService {
         }
         userRepository.findById(userId)
                 .ifPresent(user -> responses.putIfAbsent(userId, toMemberResponse(user, role)));
+    private void clearIssueAssignments(UUID projectId, UUID memberUserId, UUID actorId) {
+        List<UUID> issueIds = issueRepository.findByProjectIdAndDeletedAtIsNull(projectId).stream()
+                .map(Issue::getId)
+                .toList();
+        if (issueIds.isEmpty()) {
+            return;
+        }
+        List<IssueAssignee> assignments = issueAssigneeRepository.findByIssueIdIn(issueIds).stream()
+                .filter(assignment -> memberUserId.equals(assignment.getUserId()))
+                .toList();
+        for (IssueAssignee assignment : assignments) {
+            issueHistoryRecorder.record(assignment.getIssueId(), actorId,
+                    IssueHistoryAction.ASSIGNEE_REMOVED, "assignee", memberUserId, null,
+                    "Project member was removed");
+        }
+        issueAssigneeRepository.deleteAll(assignments);
+    }
+
+    private void rejectPendingIssueRequests(UUID projectId, UUID memberUserId, UUID actorId) {
+        List<IssueAssignmentRequest> requests =
+                issueAssignmentRequestRepository.findByProjectIdAndUserIdAndStatus(
+                        projectId, memberUserId, AssignmentRequestStatus.PENDING);
+        for (com.frietsync.backend.entity.issue.IssueAssignmentRequest request : requests) {
+            request.setStatus(AssignmentRequestStatus.REJECTED);
+            request.setDecidedBy(actorId);
+            request.setDecidedAt(Instant.now());
+            issueAssignmentRequestRepository.save(request);
+            issueHistoryRecorder.record(request.getIssueId(), actorId,
+                    IssueHistoryAction.ASSIGNMENT_REJECTED, "assignee", null, memberUserId,
+                    "Project member was removed");
+        }
     }
 
     private MemberResponse toMemberResponse(User user, Role role) {

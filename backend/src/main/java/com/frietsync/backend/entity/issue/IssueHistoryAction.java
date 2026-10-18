@@ -1,0 +1,21 @@
+package com.frietsync.backend.entity.issue;
+
+public enum IssueHistoryAction {
+    CREATED,
+    UPDATED,
+    ASSIGNED,
+    ASSIGNEE_REMOVED,
+    ASSIGNMENT_REQUESTED,
+    ASSIGNMENT_APPROVED,
+    ASSIGNMENT_REJECTED,
+    RESOLVED,
+    REVIEW_APPROVED,
+    REVIEW_REJECTED,
+    LABEL_ADDED,
+    LABEL_REMOVED,
+    ATTACHMENT_ADDED,
+    ATTACHMENT_REMOVED,
+    LINK_ADDED,
+    LINK_REMOVED,
+    DELETED,
+}
