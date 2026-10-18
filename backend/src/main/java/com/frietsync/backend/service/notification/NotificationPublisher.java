@@ -11,6 +11,8 @@ public interface NotificationPublisher {
     void publish(UUID recipientId, NotificationType type, String title, String message,
                  UUID projectId, UUID issueId, UUID actorId);
 
+    void publishChatMessage(UUID recipientId, String title, String message, UUID projectId, UUID actorId);
+
     default void publishAll(Collection<UUID> recipients, NotificationType type, String title, String message,
                             UUID projectId, UUID issueId, UUID actorId) {
         if (recipients == null) {

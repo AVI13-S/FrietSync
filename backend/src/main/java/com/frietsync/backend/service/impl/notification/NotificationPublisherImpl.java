@@ -56,6 +56,32 @@ public class NotificationPublisherImpl implements NotificationPublisher {
         events.publishEvent(new NotificationEvent(recipientId, type, n(title), n(message), created, email));
     }
 
+    @Override
+    @Transactional
+    public void publishChatMessage(UUID recipientId, String title, String message, UUID projectId, UUID actorId) {
+        if (recipientId == null || recipientId.equals(actorId)) {
+            return;
+        }
+
+        NotificationType type = NotificationType.CHAT_MESSAGE;
+        NotificationPreference pref = preferenceRepository.findByUserIdAndType(recipientId, type).orElse(null);
+        if (pref != null && !pref.isInApp()) {
+            return;
+        }
+
+        notificationRepository.deleteUnreadByUserAndTypeAndProject(recipientId, type, projectId);
+
+        Notification notification = new Notification();
+        notification.setUserId(recipientId);
+        notification.setType(type);
+        notification.setTitle(cut(title, TITLE_MAX));
+        notification.setMessage(cut(message, MESSAGE_MAX));
+        notification.setProjectId(projectId);
+        notification.setActorId(actorId);
+        NotificationResponse created = NotificationResponse.fromEntity(notificationRepository.save(notification));
+        events.publishEvent(new NotificationEvent(recipientId, type, n(title), n(message), created, false));
+    }
+
     private String cut(String value, int max) {
         String s = n(value);
         return s.length() > max ? s.substring(0, max) : s;
