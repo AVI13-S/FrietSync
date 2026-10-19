@@ -108,6 +108,7 @@ The backend also exposes authenticated routes for workspaces, projects, issues, 
 | POST | `/api/v1/issues/{issueId}/labels` | Authenticated | Add an issue label |
 | GET | `/api/v1/issues/{issueId}/labels` | Authenticated | List labels |
 | POST | `/api/v1/issues/{issueId}/assign` | Authenticated | Assign an issue directly |
+
 | POST | `/api/v1/issues/{issueId}/request` | Authenticated | Request issue assignment |
 | GET | `/api/v1/issues/{issueId}/request` | Authenticated | Get your assignment request |
 | DELETE | `/api/v1/issues/{issueId}/request` | Authenticated | Cancel your assignment request |
@@ -124,6 +125,8 @@ The backend also exposes authenticated routes for workspaces, projects, issues, 
 | GET | `/api/v1/issues/{issueId}/attachments` | Authenticated | List issue attachments |
 | DELETE | `/api/v1/attachments/{attachmentId}` | Authenticated | Delete an attachment |
 | GET | `/api/v1/attachments/{attachmentId}/download` | Authenticated | Download an attachment |
+
+Issue creation is allowed for the project's Project Manager, Team Lead, or a Reporter. Sprint creation is allowed for the assigned Project Manager or Team Lead. Project Managers and Team Leads (and Admins) can assign issues to contributors; only the Project Manager can assign a sprint to a contributor. Contributors can request sprint assignment, which the Project Manager can approve.
 
 ### Sprint, meeting, poll, notifications, and chat
 
@@ -316,6 +319,8 @@ Expired invites are marked as `EXPIRED` when the recipient loads their pending i
 
 Sprint endpoints require authentication and currently use the paths shown in the API table (without the `/api/v1` prefix).
 
+The assigned project manager or team lead can create a sprint. Only the project manager can assign a sprint to a project contributor.
+
 Create a sprint:
 
 ```http
@@ -334,8 +339,6 @@ POST /projects/{projectId}/sprints
 `name`, `startDate`, and `endDate` are required. Dates use the `YYYY-MM-DD` format. New sprints start with status `PLANNED`; use `POST /sprints/{id}/start` to move one to `ACTIVE`, then `POST /sprints/{id}/complete` to move it to `COMPLETED`.
 
 `PATCH /sprints/{id}` accepts any subset of `name`, `goal`, `startDate`, and `endDate`. `DELETE /sprints/{id}` deletes the sprint.
-
-> **Implementation note:** Sprint creation currently passes a `null` creator ID from the controller, although the database entity requires `created_by`. Wire the authenticated user ID into this endpoint before relying on sprint creation.
 
 ---
 
