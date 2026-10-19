@@ -69,8 +69,8 @@ public class IssueServiceImpl implements IssueService {
         Project project = projectRepository.findByIdForUpdate(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
         Role role = access.requireMember(project, userId);
-        if (role != Role.PROJECT_MANAGER && role != Role.REPORTER) {
-            throw new ForbiddenException("Only the project manager or a reporter can create issues");
+        if (role != Role.PROJECT_MANAGER && role != Role.TEAM_LEAD && role != Role.REPORTER) {
+            throw new ForbiddenException("Only the project manager, team lead, or a reporter can create issues");
         }
         project.setIssueCounter(project.getIssueCounter() + 1);
         projectRepository.save(project);
