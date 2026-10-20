@@ -174,11 +174,11 @@ public class GitHubIntegrationServiceImpl implements GitHubIntegrationService {
             Map<String, Integer> perDay = new HashMap<>();
             int commitCount = 0;
             for (Map<String, Object> commit : commits) {
-                Map<String, Object> author = object(commit.get("author"));
+                Map<?, ?> author = object(commit.get("author"));
                 if (author != null && login.equals(String.valueOf(author.get("login")).toLowerCase())) {
                     commitCount++;
-                    Map<String, Object> commitData = object(commit.get("commit"));
-                    Map<String, Object> committer = commitData == null ? null : object(commitData.get("committer"));
+                    Map<?, ?> commitData = object(commit.get("commit"));
+                    Map<?, ?> committer = commitData == null ? null : object(commitData.get("committer"));
                     String date = committer == null ? null : String.valueOf(committer.get("date"));
                     if (date != null && date.length() >= 10) perDay.merge(date.substring(0, 10), 1, Integer::sum);
                 }
@@ -186,7 +186,7 @@ public class GitHubIntegrationServiceImpl implements GitHubIntegrationService {
             int prs = 0;
             int merged = 0;
             for (Map<String, Object> pull : pulls) {
-                Map<String, Object> author = object(pull.get("user"));
+                Map<?, ?> author = object(pull.get("user"));
                 if (author != null && login.equals(String.valueOf(author.get("login")).toLowerCase())) {
                     prs++;
                     if (pull.get("merged_at") != null) merged++;
