@@ -199,7 +199,9 @@ public class SprintServiceImpl implements SprintService {
     public List<SprintAssignmentRequestResponse> listSprintRequests(
             UUID projectId,
             UUID currentUserId) {
-        requireProjectManager(projectId, currentUserId);
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
+        requireProjectManager(project, currentUserId);
         List<SprintAssignmentRequestResponse> responses = new ArrayList<>();
         for (SprintAssignmentRequest request : assignmentRequestRepository.findAllForProject(projectId)) {
             responses.add(SprintAssignmentRequestResponse.fromEntity(request));
