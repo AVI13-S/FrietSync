@@ -3,6 +3,7 @@ package com.frietsync.backend.service.impl.employeerecord;
 import com.frietsync.backend.dto.employeerecord.EmployeeRecordResponse;
 import com.frietsync.backend.dto.employeerecord.IssueSummary;
 import com.frietsync.backend.dto.employeerecord.RecordActivityResponse;
+import com.frietsync.backend.dto.employeerecord.RecordGithubRepoActivity;
 import com.frietsync.backend.dto.employeerecord.RecordIssueItem;
 import com.frietsync.backend.dto.employeerecord.RecordIssuesResponse;
 import com.frietsync.backend.dto.employeerecord.RecordSprintItem;
@@ -25,6 +26,7 @@ import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.service.employeerecord.EmployeeRecordService;
 import com.frietsync.backend.service.employeerecord.GithubActivity;
 import com.frietsync.backend.service.employeerecord.GithubActivityProvider;
+import com.frietsync.backend.service.employeerecord.GithubRepoActivity;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -242,16 +245,28 @@ public class EmployeeRecordServiceImpl implements EmployeeRecordService {
 
     private RecordActivityResponse buildActivity(UUID userId, Access access) {
         User user = access.target();
-        GithubActivity github = githubActivityProvider.fetch(user);
+        Collection<UUID> projectIds = access.restricted()
+                ? access.projectIds()
+                : memberRepository.findProjectIdsOfUser(userId);
+        GithubActivity github = githubActivityProvider.fetch(user, projectIds);
+
+        List<RecordGithubRepoActivity> repositories = new ArrayList<>();
+        for (GithubRepoActivity repo : github.repositories()) {
+            repositories.add(new RecordGithubRepoActivity(repo.repository(), repo.commits(),
+                    repo.pullRequests(), repo.mergedPullRequests(), repo.reviews()));
+        }
 
         return RecordActivityResponse.builder()
                 .userId(userId)
                 .githubUrl(user.getGithubUrl())
                 .githubConnected(github.connected())
+                .githubLogin(github.login())
                 .commits(github.commits())
                 .pullRequests(github.pullRequests())
                 .mergedPullRequests(github.mergedPullRequests())
                 .githubReviews(github.reviews())
+                .githubFailedRepositories(github.failedRepositories())
+                .githubRepositories(repositories)
                 .issueReviewsApproved(countActions(userId, IssueHistoryAction.REVIEW_APPROVED, access))
                 .issueReviewsRejected(countActions(userId, IssueHistoryAction.REVIEW_REJECTED, access))
                 .designSubmissions(null)
