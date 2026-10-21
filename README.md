@@ -64,6 +64,21 @@ The backend routes are grouped under `/api/v1`, with additional project-scoped e
 
 The backend also exposes authenticated routes for workspaces, projects, issues, meetings, polls, releases, milestones, notifications, and chat. Unless specifically listed as public above, these endpoints require a valid access token.
 
+### GitHub integration
+
+Configure `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_REDIRECT_URI` (the backend callback URL), `GITHUB_OAUTH_ENCRYPTION_KEY` (base64 for 32 random bytes), and `GITHUB_OAUTH_FRONTEND_RESULT_URI`. `GITHUB_OAUTH_STATE_TTL_SECONDS` is optional and defaults to 600. The OAuth app requests `read:user` and `repo` so the chosen project repository can be read, including private repositories. Access tokens are encrypted at rest.
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/v1/integrations/github/connect` | Return `{ "authorizationUrl": "..." }` for the signed-in user's OAuth flow |
+| GET | `/api/v1/integrations/github/callback` | GitHub OAuth callback; redirects to the frontend with `?github=connected`, `denied`, or `failed` |
+| DELETE | `/api/v1/integrations/github/disconnect` | Remove the signed-in user's GitHub connection |
+| PUT | `/api/v1/integrations/github/projects/{projectId}/repository` | Link `{ "owner": "...", "repository": "..." }`; project admin, manager, or team lead only |
+| DELETE | `/api/v1/integrations/github/projects/{projectId}/repository` | Unlink the project's repository; project admin, manager, or team lead only |
+| GET | `/api/v1/integrations/github/projects/{projectId}/contributions` | Return commit totals and daily counts, pull request totals, and merged pull request totals for project members |
+
+Each member connects their own GitHub account to associate a GitHub login with their FrietSync user. The member list includes users without a connection with zero activity. The repository must be readable by the account performing the contribution request. GitHub activity is fetched live and currently paginates up to the most recent 1,000 commits and 1,000 pull requests.
+
 ### Workspaces and projects
 
 | Method | URL | Access | Notes |
@@ -108,6 +123,7 @@ The backend also exposes authenticated routes for workspaces, projects, issues, 
 | POST | `/api/v1/issues/{issueId}/labels` | Authenticated | Add an issue label |
 | GET | `/api/v1/issues/{issueId}/labels` | Authenticated | List labels |
 | POST | `/api/v1/issues/{issueId}/assign` | Authenticated | Assign an issue directly |
+
 | POST | `/api/v1/issues/{issueId}/request` | Authenticated | Request issue assignment |
 | GET | `/api/v1/issues/{issueId}/request` | Authenticated | Get your assignment request |
 | DELETE | `/api/v1/issues/{issueId}/request` | Authenticated | Cancel your assignment request |
@@ -124,6 +140,8 @@ The backend also exposes authenticated routes for workspaces, projects, issues, 
 | GET | `/api/v1/issues/{issueId}/attachments` | Authenticated | List issue attachments |
 | DELETE | `/api/v1/attachments/{attachmentId}` | Authenticated | Delete an attachment |
 | GET | `/api/v1/attachments/{attachmentId}/download` | Authenticated | Download an attachment |
+
+Issue creation is allowed for the project's Project Manager, Team Lead, or a Reporter. Sprint creation is allowed for the assigned Project Manager or Team Lead. Project Managers and Team Leads (and Admins) can assign issues to contributors; only the Project Manager can assign a sprint to a contributor. Contributors can request sprint assignment, which the Project Manager can approve.
 
 ### Sprint, meeting, poll, notifications, and chat
 
@@ -229,6 +247,51 @@ Polls also publish live updates over the authenticated STOMP connection at `/ws`
 
 Protected routes use `Authorization: Bearer <access-token>`, except refresh and logout, which use the `refreshToken` HTTP-only cookie set during login. 
 
+### Project dashboard data
+
+The project page can use the existing endpoints below; no dashboard-specific route is required:
+
+| Endpoint | Dashboard data |
+|---|---|
+| `GET /api/v1/projects/{projectId}` | Project details and progress, plus `projectManager` and `teamLead` summaries (`id`, `name`, `role`) when assigned |
+| `GET /api/v1/projects/{projectId}/members` | Project member names, emails, roles, and IDs |
+| `GET /api/v1/projects/{projectId}/board` | Issue columns and card data, including assignee (`id`, `name`), labels (`id`, `name`, `color`), `assignedToCurrentUser`, and top-level `myTasksCount` |
+| `GET /api/v1/projects/{projectId}/summary` | Issue and sprint totals, status counts, overdue counts, and estimated-hour summaries; use issue counts for task overview charts |
+| `GET /api/v1/projects/{projectId}/sprints` | Sprint details including status and assigned contributor name and ID |
+| `GET /api/v1/projects/{projectId}/milestones` | Milestone due date and `progressPercentage`; the existing service calculates progress from its sprints |
+| `GET /api/v1/projects/{projectId}/activity?limit=10` | Recent events with actor name and issue details; `limit` can be 1 through 100 |
+| `GET /api/v1/projects/{projectId}/polls` | Polls ordered newest first, with option vote totals; the first entry is the latest poll |
+
+The board endpoint reports issue status and priority but does not track a separate issue completion percentage or link issues to sprints. Render task progress from the project summary status counts, and render sprint counts from sprint statuses. The project manager and team lead summaries contain names but not profile image URLs.
+
+Each board response now includes a project-wide `myTasksCount`; each issue card includes its first assignee (or `null`), all labels, and whether the authenticated user is assigned:
+
+```json
+{
+  "columns": [
+    {
+      "status": "OPEN",
+      "allowedTransitions": ["IN_PROGRESS"],
+      "issues": [
+        {
+          "id": "<issue-uuid>",
+          "issueNumber": 205,
+          "title": "Setup analytics tracking",
+          "priority": "MEDIUM",
+          "dueDate": "2026-10-22",
+          "assignee": {"id": "<user-uuid>", "name": "Alex Morgan"},
+          "labels": [{"id": "<label-uuid>", "name": "Analytics", "color": "#21a5d8"}],
+          "assignedToCurrentUser": true
+        }
+      ]
+    }
+  ],
+  "myTasksCount": 6
+}
+```
+
+Project responses include `projectManager` and `teamLead` as `null` when unassigned, or as `{ "id", "name", "role" }` when assigned. Sprint responses add `assignedContributorName`, which is `null` when no contributor is assigned.
+
 `GET /api/v1/check` returns:
 
 ```json
@@ -316,6 +379,8 @@ Expired invites are marked as `EXPIRED` when the recipient loads their pending i
 
 Sprint endpoints require authentication and currently use the paths shown in the API table (without the `/api/v1` prefix).
 
+The assigned project manager or team lead can create a sprint. Only the project manager can assign a sprint to a project contributor.
+
 Create a sprint:
 
 ```http
@@ -334,8 +399,6 @@ POST /projects/{projectId}/sprints
 `name`, `startDate`, and `endDate` are required. Dates use the `YYYY-MM-DD` format. New sprints start with status `PLANNED`; use `POST /sprints/{id}/start` to move one to `ACTIVE`, then `POST /sprints/{id}/complete` to move it to `COMPLETED`.
 
 `PATCH /sprints/{id}` accepts any subset of `name`, `goal`, `startDate`, and `endDate`. `DELETE /sprints/{id}` deletes the sprint.
-
-> **Implementation note:** Sprint creation currently passes a `null` creator ID from the controller, although the database entity requires `created_by`. Wire the authenticated user ID into this endpoint before relying on sprint creation.
 
 ---
 

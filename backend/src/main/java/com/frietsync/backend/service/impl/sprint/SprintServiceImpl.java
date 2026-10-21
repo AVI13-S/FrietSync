@@ -50,7 +50,7 @@ public class SprintServiceImpl implements SprintService {
     public SprintResponse createSprint(UUID projectId, CreateSprintRequest request, UUID currentUserId) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
-        requireProjectManager(project, currentUserId);
+        requireProjectManagerOrTeamLead(project, currentUserId);
         checkMilestoneProject(projectId, request.getMilestoneId());
         checkDates(request.getStartDate(), request.getEndDate());
         checkDatesWithinProject(project, request.getStartDate(), request.getEndDate());
@@ -199,7 +199,9 @@ public class SprintServiceImpl implements SprintService {
     public List<SprintAssignmentRequestResponse> listSprintRequests(
             UUID projectId,
             UUID currentUserId) {
-        requireProjectManager(projectId, currentUserId);
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
+        requireProjectManager(project, currentUserId);
         List<SprintAssignmentRequestResponse> responses = new ArrayList<>();
         for (SprintAssignmentRequest request : assignmentRequestRepository.findAllForProject(projectId)) {
             responses.add(SprintAssignmentRequestResponse.fromEntity(request));
@@ -248,6 +250,21 @@ public class SprintServiceImpl implements SprintService {
                 .orElseThrow(() -> new ForbiddenException("Project manager is not a valid user"));
         if (manager.getRole() != Role.PROJECT_MANAGER) {
             throw new ForbiddenException("Project manager must have the PROJECT_MANAGER role");
+        }
+    }
+
+    private void requireProjectManagerOrTeamLead(Project project, UUID userId) {
+        if (userId != null && userId.equals(project.getProjectManagerId())) {
+            requireProjectManager(project, userId);
+            return;
+        }
+        if (userId == null || !userId.equals(project.getTeamLeadId())) {
+            throw new ForbiddenException("Only the project manager or team lead can create a sprint");
+        }
+        User teamLead = userRepository.findById(userId)
+                .orElseThrow(() -> new ForbiddenException("Team lead is not a valid user"));
+        if (teamLead.getRole() != Role.TEAM_LEAD) {
+            throw new ForbiddenException("Project team lead must have the TEAM_LEAD role");
         }
     }
 
@@ -317,7 +334,9 @@ public class SprintServiceImpl implements SprintService {
                 milestoneName = milestone.getName();
             }
         }
-        return SprintResponse.fromEntity(sprint, milestoneName);
+        String contributorName = sprint.getAssignedContributorId() == null ? null
+                : userRepository.findById(sprint.getAssignedContributorId()).map(User::getName).orElse(null);
+        return SprintResponse.fromEntity(sprint, milestoneName, contributorName);
     }
 
     private void checkDatesWithinProject(Project project, LocalDate startDate, LocalDate endDate) {
