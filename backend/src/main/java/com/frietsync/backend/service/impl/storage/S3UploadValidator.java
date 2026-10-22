@@ -24,6 +24,12 @@ public final class S3UploadValidator {
             "7z", "appimage"
     );
 
+    private static final Set<String> CHAT_EXTENSIONS = Set.of(
+            "png", "jpg", "jpeg", "gif", "webp", "pdf", "txt", "md", "csv", "json", "log",
+            "zip", "docx", "xlsx", "pptx", "mp3", "wav", "m4a", "ogg", "webm", "aac", "flac",
+            "odt", "ods", "odp", "rtf", "7z", "tar", "gz"
+    );
+
     private static final Set<String> PROFILE_PICTURE_EXTENSIONS =
             Set.of("png", "jpg", "jpeg", "webp");
 
@@ -35,6 +41,10 @@ public final class S3UploadValidator {
     public static String validateReleaseFile(
             MultipartFile file, String fileName) {
         return validate(fileName, RELEASE_EXTENSIONS);
+    }
+
+    public static String validateChatAttachment(MultipartFile file, String fileName) {
+        return validate(fileName, CHAT_EXTENSIONS);
     }
 
     public static String validateProfilePicture(

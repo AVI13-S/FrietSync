@@ -41,7 +41,8 @@ public record ChatMessageResponse(
                 message.getSenderId(),
                 message.getSenderName(),
                 message.getContent(),
-                message.getCreatedAt(),
+                attachments,
+                message.getCreatedAt()
                 replyToId,
                 replyToSenderName,
                 replyToContent,
