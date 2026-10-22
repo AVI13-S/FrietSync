@@ -18,7 +18,6 @@ import com.frietsync.backend.repository.project.ProjectRepository;
 import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.service.chat.ChatService;
 import com.frietsync.backend.service.notification.NotificationPublisher;
-import com.frietsync.backend.service.impl.project.ProjectAccess;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -46,7 +45,6 @@ public class ChatServiceImpl implements ChatService {
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
     private final NotificationPublisher notificationPublisher;
-    private final ProjectAccess projectAccess;
 
     @Override
     @Transactional
@@ -63,11 +61,36 @@ public class ChatServiceImpl implements ChatService {
 
         User sender = userRepository.findById(senderId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        ChatMessage replyTo = null;
+        if (request.getReplyToId() != null) {
+            replyTo = chatMessageRepository.findById(request.getReplyToId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Message to reply to not found"));
+            if (!replyTo.getProjectId().equals(projectId) || replyTo.isDeleted()) {
+                throw new BadRequestException("You can't reply to this message");
+            }
+        }
+
+        Set<UUID> mentionedIds = new LinkedHashSet<>();
+        if (request.getMentionedUserIds() != null) {
+            for (UUID mentionedId : request.getMentionedUserIds()) {
+                if (mentionedId == null) {
+                    continue;
+                }
+                if (!hasProjectAccess(project, mentionedId)) {
+                    throw new BadRequestException("Mentioned user is not a member of this project");
+                }
+                mentionedIds.add(mentionedId);
+            }
+        }
+
         ChatMessage message = new ChatMessage();
         message.setProjectId(projectId);
         message.setSenderId(senderId);
         message.setSenderName(sender.getName());
-        message.setContent(content == null ? "" : content.trim());
+        message.setContent(content.trim());
+        message.setReplyTo(replyTo);
+        message.setMentionedUserIds(mentionedIds);
         ChatMessage savedMessage = chatMessageRepository.save(message);
         List<ChatAttachmentResponse> attachments = chatAttachmentService.bindToMessage(
                 projectId, senderId, savedMessage.getId(), request.getAttachmentIds());
@@ -84,12 +107,23 @@ public class ChatServiceImpl implements ChatService {
         projectMemberRepository.findByProjectId(projectId)
                 .forEach(member -> recipients.add(member.getUserId()));
 
+        recipients.removeAll(mentionedIds);
+
         String title = "New message in " + project.getName();
         String notificationMessage = sender.getName() + " sent a message in " + project.getName() + ".";
         recipients.forEach(recipientId -> notificationPublisher.publishChatMessage(
                 recipientId, title, notificationMessage, projectId, senderId));
 
-        return ChatMessageResponse.fromEntity(savedMessage, attachments);
+        String mentionTitle = "You were mentioned in " + project.getName();
+        String mentionMessage = sender.getName() + " mentioned you in " + project.getName() + ".";
+        for (UUID mentionedId : mentionedIds) {
+            if (!mentionedId.equals(senderId)) {
+                notificationPublisher.publishChatMessage(
+                        mentionedId, mentionTitle, mentionMessage, projectId, senderId);
+            }
+        }
+
+        return ChatMessageResponse.fromEntity(savedMessage);
     }
 
     @Override
@@ -121,14 +155,17 @@ public class ChatServiceImpl implements ChatService {
     @Transactional(readOnly = true)
     public void assertProjectAccess(UUID projectId, UUID userId) {
         Project project = findProject(projectId);
-        projectAccess.requireWorkspaceAndActive(project, userId);
+        if (!hasProjectAccess(project, userId)) {
+            throw new ForbiddenException("You don't have access to this project's chat");
+        }
+    }
+
+    private boolean hasProjectAccess(Project project, UUID userId) {
         boolean projectRole = userId.equals(project.getCreatedBy())
                 || userId.equals(project.getAdminId())
                 || userId.equals(project.getProjectManagerId())
                 || userId.equals(project.getTeamLeadId());
-        if (!projectRole && !projectMemberRepository.existsByProjectIdAndUserId(projectId, userId)) {
-            throw new ForbiddenException("You don't have access to this project's chat");
-        }
+        return projectRole || projectMemberRepository.existsByProjectIdAndUserId(project.getId(), userId);
     }
 
     private Project findProject(UUID projectId) {
