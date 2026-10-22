@@ -13,6 +13,7 @@ public record ChatMessageResponse(
         UUID senderId,
         String senderName,
         String content,
+        List<ChatAttachmentResponse> attachments,
         Instant createdAt,
         UUID replyToId,
         String replyToSenderName,
@@ -21,6 +22,11 @@ public record ChatMessageResponse(
 ) {
 
     public static ChatMessageResponse fromEntity(ChatMessage message) {
+        return fromEntity(message, List.of());
+    }
+
+    public static ChatMessageResponse fromEntity(
+            ChatMessage message, List<ChatAttachmentResponse> attachments) {
         UUID replyToId = null;
         String replyToSenderName = null;
         String replyToContent = null;
@@ -42,7 +48,7 @@ public record ChatMessageResponse(
                 message.getSenderName(),
                 message.getContent(),
                 attachments,
-                message.getCreatedAt()
+                message.getCreatedAt(),
                 replyToId,
                 replyToSenderName,
                 replyToContent,

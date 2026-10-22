@@ -6,7 +6,7 @@ import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.repository.chat.ChatAttachmentRepository;
 import com.frietsync.backend.service.chat.ChatAttachmentService;
-import com.frietsync.backend.service.chat.ChatService;
+import com.frietsync.backend.service.chat.ChatAccessService;
 import com.frietsync.backend.service.impl.storage.S3UploadValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,7 +38,7 @@ public class ChatAttachmentServiceImpl implements ChatAttachmentService {
     private static final long MAX_SIZE = 25L * 1024 * 1024;
 
     private final ChatAttachmentRepository repository;
-    private final ChatService chatService;
+    private final ChatAccessService chatAccessService;
     private final S3Client s3Client;
 
     @Value("${aws.s3.bucket:}")
@@ -46,7 +46,7 @@ public class ChatAttachmentServiceImpl implements ChatAttachmentService {
 
     @Override
     public ChatAttachmentResponse upload(UUID projectId, UUID userId, MultipartFile file) {
-        chatService.assertProjectAccess(projectId, userId);
+        chatAccessService.assertProjectAccess(projectId, userId);
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("File is empty");
         }
@@ -100,7 +100,7 @@ public class ChatAttachmentServiceImpl implements ChatAttachmentService {
     @Override
     @Transactional(readOnly = true)
     public AttachmentFile download(UUID projectId, UUID attachmentId, UUID userId) {
-        chatService.assertProjectAccess(projectId, userId);
+        chatAccessService.assertProjectAccess(projectId, userId);
         ChatAttachment attachment = repository.findById(attachmentId)
                 .filter(a -> projectId.equals(a.getProjectId()) && a.getMessageId() != null)
                 .orElseThrow(() -> new ResourceNotFoundException("Attachment not found"));

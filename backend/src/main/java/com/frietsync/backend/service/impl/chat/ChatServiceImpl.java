@@ -8,11 +8,11 @@ import com.frietsync.backend.entity.chat.ChatMessage;
 import com.frietsync.backend.entity.project.Project;
 import com.frietsync.backend.entity.user.User;
 import com.frietsync.backend.exception.BadRequestException;
-import com.frietsync.backend.exception.ForbiddenException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.repository.chat.ChatMessageRepository;
 import com.frietsync.backend.repository.chat.ChatAttachmentRepository;
 import com.frietsync.backend.service.chat.ChatAttachmentService;
+import com.frietsync.backend.service.chat.ChatAccessService;
 import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
 import com.frietsync.backend.repository.user.UserRepository;
@@ -41,6 +41,7 @@ public class ChatServiceImpl implements ChatService {
     private final ChatMessageRepository chatMessageRepository;
     private final ChatAttachmentRepository chatAttachmentRepository;
     private final ChatAttachmentService chatAttachmentService;
+    private final ChatAccessService chatAccessService;
     private final ProjectMemberRepository projectMemberRepository;
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
@@ -77,7 +78,7 @@ public class ChatServiceImpl implements ChatService {
                 if (mentionedId == null) {
                     continue;
                 }
-                if (!hasProjectAccess(project, mentionedId)) {
+                if (!chatAccessService.hasProjectAccess(project, mentionedId)) {
                     throw new BadRequestException("Mentioned user is not a member of this project");
                 }
                 mentionedIds.add(mentionedId);
@@ -88,7 +89,7 @@ public class ChatServiceImpl implements ChatService {
         message.setProjectId(projectId);
         message.setSenderId(senderId);
         message.setSenderName(sender.getName());
-        message.setContent(content.trim());
+        message.setContent(content == null ? "" : content.trim());
         message.setReplyTo(replyTo);
         message.setMentionedUserIds(mentionedIds);
         ChatMessage savedMessage = chatMessageRepository.save(message);
@@ -123,7 +124,7 @@ public class ChatServiceImpl implements ChatService {
             }
         }
 
-        return ChatMessageResponse.fromEntity(savedMessage);
+        return ChatMessageResponse.fromEntity(savedMessage, attachments);
     }
 
     @Override
@@ -154,22 +155,6 @@ public class ChatServiceImpl implements ChatService {
     @Override
     @Transactional(readOnly = true)
     public void assertProjectAccess(UUID projectId, UUID userId) {
-        Project project = findProject(projectId);
-        if (!hasProjectAccess(project, userId)) {
-            throw new ForbiddenException("You don't have access to this project's chat");
-        }
-    }
-
-    private boolean hasProjectAccess(Project project, UUID userId) {
-        boolean projectRole = userId.equals(project.getCreatedBy())
-                || userId.equals(project.getAdminId())
-                || userId.equals(project.getProjectManagerId())
-                || userId.equals(project.getTeamLeadId());
-        return projectRole || projectMemberRepository.existsByProjectIdAndUserId(project.getId(), userId);
-    }
-
-    private Project findProject(UUID projectId) {
-        return projectRepository.findById(projectId)
-                .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
+        chatAccessService.assertProjectAccess(projectId, userId);
     }
 }

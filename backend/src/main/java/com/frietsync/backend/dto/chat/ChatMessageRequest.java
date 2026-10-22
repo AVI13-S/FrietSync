@@ -15,7 +15,7 @@ public class ChatMessageRequest {
 
     @Size(max = 10)
     private List<UUID> attachmentIds;
-}
+
     private UUID replyToId;
     @Size(max = 30)
     private List<UUID> mentionedUserIds = new ArrayList<>();
