@@ -2,6 +2,8 @@ package com.frietsync.backend.service.impl.chat;
 
 import com.frietsync.backend.dto.chat.ChatMessageRequest;
 import com.frietsync.backend.dto.chat.ChatMessageResponse;
+import com.frietsync.backend.dto.chat.ChatAttachmentResponse;
+import com.frietsync.backend.entity.chat.ChatAttachment;
 import com.frietsync.backend.entity.chat.ChatMessage;
 import com.frietsync.backend.entity.project.Project;
 import com.frietsync.backend.entity.user.User;
@@ -9,6 +11,8 @@ import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.exception.ForbiddenException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.repository.chat.ChatMessageRepository;
+import com.frietsync.backend.repository.chat.ChatAttachmentRepository;
+import com.frietsync.backend.service.chat.ChatAttachmentService;
 import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
 import com.frietsync.backend.repository.user.UserRepository;
@@ -36,6 +40,8 @@ public class ChatServiceImpl implements ChatService {
     private static final int MAX_MESSAGE_LENGTH = 2000;
 
     private final ChatMessageRepository chatMessageRepository;
+    private final ChatAttachmentRepository chatAttachmentRepository;
+    private final ChatAttachmentService chatAttachmentService;
     private final ProjectMemberRepository projectMemberRepository;
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
@@ -49,8 +55,10 @@ public class ChatServiceImpl implements ChatService {
         Project project = projectRepository.findByIdForUpdate(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
         String content = request.getContent();
-        if (!StringUtils.hasText(content) || content.length() > MAX_MESSAGE_LENGTH) {
-            throw new BadRequestException("Message must contain 1 to 2000 characters");
+        boolean hasAttachments = request.getAttachmentIds() != null && !request.getAttachmentIds().isEmpty();
+        if ((!StringUtils.hasText(content) && !hasAttachments)
+                || (content != null && content.length() > MAX_MESSAGE_LENGTH)) {
+            throw new BadRequestException("Message must contain up to 2000 characters or include an attachment");
         }
 
         User sender = userRepository.findById(senderId)
@@ -59,8 +67,10 @@ public class ChatServiceImpl implements ChatService {
         message.setProjectId(projectId);
         message.setSenderId(senderId);
         message.setSenderName(sender.getName());
-        message.setContent(content.trim());
+        message.setContent(content == null ? "" : content.trim());
         ChatMessage savedMessage = chatMessageRepository.save(message);
+        List<ChatAttachmentResponse> attachments = chatAttachmentService.bindToMessage(
+                projectId, senderId, savedMessage.getId(), request.getAttachmentIds());
 
         Set<UUID> recipients = new LinkedHashSet<>();
         recipients.add(project.getCreatedBy());
@@ -79,7 +89,7 @@ public class ChatServiceImpl implements ChatService {
         recipients.forEach(recipientId -> notificationPublisher.publishChatMessage(
                 recipientId, title, notificationMessage, projectId, senderId));
 
-        return ChatMessageResponse.fromEntity(savedMessage);
+        return ChatMessageResponse.fromEntity(savedMessage, attachments);
     }
 
     @Override
@@ -94,7 +104,17 @@ public class ChatServiceImpl implements ChatService {
                 ))
         ));
         Collections.reverse(messages);
-        return messages.stream().map(ChatMessageResponse::fromEntity).toList();
+        List<UUID> messageIds = messages.stream().map(ChatMessage::getId).toList();
+        List<ChatAttachment> attachments = messageIds.isEmpty()
+                ? List.of()
+                : chatAttachmentRepository.findByMessageIdIn(messageIds);
+        java.util.Map<UUID, List<ChatAttachmentResponse>> attachmentsByMessage = attachments.stream()
+                        .collect(java.util.stream.Collectors.groupingBy(
+                                ChatAttachment::getMessageId,
+                                java.util.stream.Collectors.mapping(ChatAttachmentResponse::fromEntity,
+                                        java.util.stream.Collectors.toList())));
+        return messages.stream().map(message -> ChatMessageResponse.fromEntity(
+                message, attachmentsByMessage.getOrDefault(message.getId(), List.of()))).toList();
     }
 
     @Override
