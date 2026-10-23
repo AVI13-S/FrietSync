@@ -9,6 +9,7 @@ import com.frietsync.backend.entity.meeting.MeetingAttendee;
 import com.frietsync.backend.entity.project.Project;
 import com.frietsync.backend.entity.user.Role;
 import com.frietsync.backend.entity.user.User;
+import com.frietsync.backend.entity.notification.NotificationType;
 import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.exception.ForbiddenException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
@@ -20,9 +21,13 @@ import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.service.meeting.MeetingService;
 import com.frietsync.backend.service.integration.GoogleIntegrationService;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
+import com.frietsync.backend.service.notification.NotificationPublisher;
+import com.frietsync.backend.service.email.EmailService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import java.time.Instant;
@@ -45,6 +50,8 @@ public class MeetingServiceImpl implements MeetingService {
     private final UserRepository userRepository;
     private final GoogleIntegrationService googleIntegrationService;
     private final ProjectAccess projectAccess;
+    private final NotificationPublisher notificationPublisher;
+    private final EmailService emailService;
 
     @Override
     @Transactional
@@ -77,6 +84,31 @@ public class MeetingServiceImpl implements MeetingService {
         Meeting savedMeeting = meetingRepository.save(meeting);
         for (User attendee : attendees) {
             attendeeRepository.save(newAttendee(savedMeeting.getId(), attendee.getId()));
+        }
+        String notificationMessage = "Meeting scheduled for " + savedMeeting.getStartAt() + ".";
+        notificationPublisher.publish(organizerId, NotificationType.MEETING_INVITE,
+                "Meeting scheduled: " + savedMeeting.getTitle(), notificationMessage,
+                projectId, null, null);
+        for (User attendee : attendees) {
+            notificationPublisher.publish(attendee.getId(), NotificationType.MEETING_INVITE,
+                    "Meeting scheduled: " + savedMeeting.getTitle(),
+                    organizerName(organizerId) + " scheduled a meeting for " + savedMeeting.getStartAt() + ".",
+                    projectId, null, organizerId);
+        }
+        if (savedMeeting.getGoogleMeetLink() != null && !savedMeeting.getGoogleMeetLink().isBlank()) {
+            List<String> recipientEmails = new ArrayList<>();
+            recipientEmails.add(userRepository.findById(organizerId).orElseThrow().getEmail());
+            attendees.stream().map(User::getEmail).filter(email -> !recipientEmails.contains(email))
+                    .forEach(recipientEmails::add);
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    recipientEmails.forEach(email -> emailService.sendMeetingMail(email,
+                            savedMeeting.getTitle(), savedMeeting.getAgenda(),
+                            savedMeeting.getStartAt().toString(), savedMeeting.getEndAt().toString(),
+                            savedMeeting.getGoogleMeetLink()));
+                }
+            });
         }
         return toResponse(savedMeeting);
     }
@@ -203,7 +235,8 @@ public class MeetingServiceImpl implements MeetingService {
             userRepository.findById(attendee.getUserId())
                     .filter(user -> project.getWorkspaceId() != null
                             && project.getWorkspaceId().equals(user.getWorkspaceId()))
-                    .ifPresent(user -> attendees.add(MeetingAttendeeResponse.fromEntity(attendee)));
+                    .ifPresent(user -> attendees.add(MeetingAttendeeResponse.fromEntity(
+                            attendee, user.getName(), user.getEmail())));
         }
         return MeetingResponse.fromEntity(meeting, attendees);
     }
@@ -260,6 +293,10 @@ public class MeetingServiceImpl implements MeetingService {
             return true;
         }
         return projectMemberRepository.existsByProjectIdAndUserId(project.getId(), userId);
+    }
+
+    private String organizerName(UUID organizerId) {
+        return userRepository.findById(organizerId).map(User::getName).orElse("A project member");
     }
 
     private boolean isProjectAdmin(Project project, UUID userId) {
