@@ -243,17 +243,25 @@ public class IssueAssignmentServiceImpl implements IssueAssignmentService {
     }
 
     private AssignmentRequestResponse toResponse(IssueAssignmentRequest req) {
-        return build(req, userRepository.findById(req.getUserId()).orElse(null));
+        Map<UUID, User> users = new HashMap<>();
+        userRepository.findAllById(java.util.stream.Stream.of(req.getUserId(), req.getDecidedBy())
+                .filter(java.util.Objects::nonNull).toList()).forEach(user -> users.put(user.getId(), user));
+        return build(req, users);
     }
 
     private List<AssignmentRequestResponse> toResponses(List<IssueAssignmentRequest> requests) {
         Map<UUID, User> users = new HashMap<>();
-        userRepository.findAllById(requests.stream().map(IssueAssignmentRequest::getUserId).distinct().toList())
+        List<UUID> ids = requests.stream()
+                .flatMap(request -> java.util.stream.Stream.of(request.getUserId(), request.getDecidedBy()))
+                .filter(java.util.Objects::nonNull).distinct().toList();
+        userRepository.findAllById(ids)
                 .forEach(u -> users.put(u.getId(), u));
-        return requests.stream().map(r -> build(r, users.get(r.getUserId()))).toList();
+        return requests.stream().map(r -> build(r, users)).toList();
     }
 
-    private AssignmentRequestResponse build(IssueAssignmentRequest r, User requester) {
+    private AssignmentRequestResponse build(IssueAssignmentRequest r, Map<UUID, User> users) {
+        User requester = users.get(r.getUserId());
+        User decider = users.get(r.getDecidedBy());
         return AssignmentRequestResponse.builder()
                 .id(r.getId())
                 .projectId(r.getProjectId())
@@ -264,6 +272,7 @@ public class IssueAssignmentServiceImpl implements IssueAssignmentService {
                 .status(r.getStatus())
                 .message(r.getMessage())
                 .decidedBy(r.getDecidedBy())
+                .decidedByName(decider == null ? null : decider.getName())
                 .decidedAt(r.getDecidedAt())
                 .createdAt(r.getCreatedAt())
                 .build();

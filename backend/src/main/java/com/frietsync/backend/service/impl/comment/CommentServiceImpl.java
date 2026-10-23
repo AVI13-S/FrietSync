@@ -13,6 +13,7 @@ import com.frietsync.backend.exception.ForbiddenException;
 import com.frietsync.backend.repository.issue.IssueCommentRepository;
 import com.frietsync.backend.repository.sprint.SprintCommentRepository;
 import com.frietsync.backend.repository.sprint.SprintRepository;
+import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.service.comment.CommentService;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +32,7 @@ public class CommentServiceImpl implements CommentService {
     private final SprintCommentRepository sprintCommentRepository;
     private final SprintRepository sprintRepository;
     private final ProjectAccess projectAccess;
+    private final UserRepository userRepository;
 
     @Override
     public IssueCommentResponse addIssueComment(UUID issueId, CreateIssueCommentRequest request, UUID userId) {
@@ -40,7 +42,7 @@ public class CommentServiceImpl implements CommentService {
         comment.setIssueId(issueId);
         comment.setUserId(userId);
         comment.setContent(request.getContent().trim());
-        return IssueCommentResponse.fromEntity(issueCommentRepository.save(comment));
+        return toIssueCommentResponse(issueCommentRepository.save(comment));
     }
 
     @Override
@@ -49,7 +51,7 @@ public class CommentServiceImpl implements CommentService {
         Issue issue = projectAccess.issue(issueId);
         projectAccess.requireMember(projectAccess.project(issue.getProjectId()), userId);
         return issueCommentRepository.findByIssueIdOrderByCreatedAtAsc(issueId).stream()
-                .map(IssueCommentResponse::fromEntity).toList();
+                .map(this::toIssueCommentResponse).toList();
     }
 
     @Override
@@ -64,7 +66,7 @@ public class CommentServiceImpl implements CommentService {
         projectAccess.requireMember(projectAccess.project(issue.getProjectId()), userId);
         requireCommentOwner(comment.getUserId(), userId);
         comment.setContent(request.getContent().trim());
-        return IssueCommentResponse.fromEntity(issueCommentRepository.save(comment));
+        return toIssueCommentResponse(issueCommentRepository.save(comment));
     }
 
     @Override
@@ -88,7 +90,7 @@ public class CommentServiceImpl implements CommentService {
         comment.setSprintId(sprintId);
         comment.setUserId(userId);
         comment.setContent(request.getContent().trim());
-        return SprintCommentResponse.fromEntity(sprintCommentRepository.save(comment));
+        return toSprintCommentResponse(sprintCommentRepository.save(comment));
     }
 
     @Override
@@ -97,7 +99,7 @@ public class CommentServiceImpl implements CommentService {
         Sprint sprint = findSprint(sprintId);
         projectAccess.requireMember(projectAccess.project(sprint.getProjectId()), userId);
         return sprintCommentRepository.findBySprintIdOrderByCreatedAtAsc(sprintId).stream()
-                .map(SprintCommentResponse::fromEntity).toList();
+                .map(this::toSprintCommentResponse).toList();
     }
 
     @Override
@@ -112,7 +114,7 @@ public class CommentServiceImpl implements CommentService {
         projectAccess.requireMember(projectAccess.project(sprint.getProjectId()), userId);
         requireCommentOwner(comment.getUserId(), userId);
         comment.setContent(request.getContent().trim());
-        return SprintCommentResponse.fromEntity(sprintCommentRepository.save(comment));
+        return toSprintCommentResponse(sprintCommentRepository.save(comment));
     }
 
     @Override
@@ -132,6 +134,16 @@ public class CommentServiceImpl implements CommentService {
         if (!ownerId.equals(userId)) {
             throw new ForbiddenException("You can only edit or delete your own comments");
         }
+    }
+
+    private IssueCommentResponse toIssueCommentResponse(IssueComment comment) {
+        String userName = userRepository.findById(comment.getUserId()).map(user -> user.getName()).orElse(null);
+        return IssueCommentResponse.fromEntity(comment, userName);
+    }
+
+    private SprintCommentResponse toSprintCommentResponse(SprintComment comment) {
+        String userName = userRepository.findById(comment.getUserId()).map(user -> user.getName()).orElse(null);
+        return SprintCommentResponse.fromEntity(comment, userName);
     }
 
     private Sprint findSprint(UUID sprintId) {

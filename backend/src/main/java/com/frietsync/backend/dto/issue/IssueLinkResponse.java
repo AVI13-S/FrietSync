@@ -21,5 +21,6 @@ public class IssueLinkResponse {
     private String targetTitle;
     private IssueLinkType type;
     private UUID createdBy;
+    private String createdByName;
     private Instant createdAt;
 }

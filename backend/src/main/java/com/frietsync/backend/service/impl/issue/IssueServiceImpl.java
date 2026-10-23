@@ -12,6 +12,7 @@ import com.frietsync.backend.dto.issue.ReviewRequest;
 import com.frietsync.backend.dto.project.LabelResponse;
 import com.frietsync.backend.entity.issue.Issue;
 import com.frietsync.backend.entity.issue.IssueHistoryAction;
+import com.frietsync.backend.entity.issue.IssueHistory;
 import com.frietsync.backend.entity.issue.IssueLabel;
 import com.frietsync.backend.entity.issue.IssuePriority;
 import com.frietsync.backend.entity.issue.IssueStatus;
@@ -29,6 +30,7 @@ import com.frietsync.backend.repository.issue.IssueRepository;
 import com.frietsync.backend.repository.project.LabelRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
 import com.frietsync.backend.repository.project.ReleaseIssueRepository;
+import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
 import com.frietsync.backend.service.issue.IssueAttachmentService;
 import com.frietsync.backend.service.issue.IssueService;
@@ -43,6 +45,7 @@ import com.frietsync.backend.repository.issue.IssueLinkRepository;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -60,6 +63,7 @@ public class IssueServiceImpl implements IssueService {
     private final IssueLabelRepository issueLabelRepository;
     private final LabelRepository labelRepository;
     private final ProjectRepository projectRepository;
+    private final UserRepository userRepository;
     private final IssueAttachmentService attachmentService;
     private final ProjectAccess access;
     private final IssueMapper mapper;
@@ -304,11 +308,17 @@ public class IssueServiceImpl implements IssueService {
         com.frietsync.backend.entity.issue.Issue issue = issueRepository.findById(issueId)
                 .orElseThrow(() -> new ResourceNotFoundException("Issue not found"));
         access.requireMember(access.project(issue.getProjectId()), userId);
-        Page<IssueHistoryResponse> result = historyRepository
-                .findByIssueIdOrderByCreatedAtDescIdDesc(issueId, pageRequest(page, size))
-                .map(h -> IssueHistoryResponse.builder()
+        Page<IssueHistory> historyPage = historyRepository
+                .findByIssueIdOrderByCreatedAtDescIdDesc(issueId, pageRequest(page, size));
+        Map<UUID, String> actorNames = new java.util.HashMap<>();
+        List<UUID> actorIds = historyPage.getContent().stream()
+                .map(IssueHistory::getActorId)
+                .filter(Objects::nonNull).distinct().toList();
+        userRepository.findAllById(actorIds).forEach(actor -> actorNames.put(actor.getId(), actor.getName()));
+        Page<IssueHistoryResponse> result = historyPage.map(h -> IssueHistoryResponse.builder()
                         .id(h.getId())
                         .actorId(h.getActorId())
+                        .actorName(actorNames.get(h.getActorId()))
                         .action(h.getAction())
                         .field(h.getFieldName())
                         .oldValue(h.getOldValue())

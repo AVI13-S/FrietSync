@@ -12,18 +12,23 @@ public class SprintAssignmentRequestResponse {
     private UUID id;
     private UUID sprintId;
     private UUID requestedBy;
+    private String requestedByName;
     private SprintAssignmentRequestStatus status;
     private UUID reviewedBy;
+    private String reviewedByName;
     private Instant createdAt;
     private Instant updatedAt;
 
-    public static SprintAssignmentRequestResponse fromEntity(SprintAssignmentRequest request) {
+    public static SprintAssignmentRequestResponse fromEntity(SprintAssignmentRequest request,
+                                                             String requestedByName, String reviewedByName) {
         SprintAssignmentRequestResponse response = new SprintAssignmentRequestResponse();
         response.setId(request.getId());
         response.setSprintId(request.getSprintId());
         response.setRequestedBy(request.getRequestedBy());
+        response.setRequestedByName(requestedByName);
         response.setStatus(request.getStatus());
         response.setReviewedBy(request.getReviewedBy());
+        response.setReviewedByName(reviewedByName);
         response.setCreatedAt(request.getCreatedAt());
         response.setUpdatedAt(request.getUpdatedAt());
         return response;

@@ -10,6 +10,7 @@ public record MeetingResponse(
         UUID id,
         UUID projectId,
         UUID organizerId,
+        String organizerName,
         String title,
         String agenda,
         Instant startAt,
@@ -20,11 +21,13 @@ public record MeetingResponse(
         Instant updatedAt
 ) {
 
-    public static MeetingResponse fromEntity(Meeting meeting, List<MeetingAttendeeResponse> attendees) {
+    public static MeetingResponse fromEntity(Meeting meeting, String organizerName,
+                                             List<MeetingAttendeeResponse> attendees) {
         return new MeetingResponse(
                 meeting.getId(),
                 meeting.getProjectId(),
                 meeting.getOrganizerId(),
+                organizerName,
                 meeting.getTitle(),
                 meeting.getAgenda(),
                 meeting.getStartAt(),

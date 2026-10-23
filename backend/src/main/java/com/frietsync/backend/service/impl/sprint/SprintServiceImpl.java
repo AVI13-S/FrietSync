@@ -193,7 +193,7 @@ public class SprintServiceImpl implements SprintService {
         request.setSprintId(sprintId);
         request.setRequestedBy(currentUserId);
         SprintAssignmentRequest savedRequest = assignmentRequestRepository.save(request);
-        return SprintAssignmentRequestResponse.fromEntity(savedRequest);
+        return toAssignmentRequestResponse(savedRequest);
     }
 
     @Override
@@ -206,7 +206,7 @@ public class SprintServiceImpl implements SprintService {
         requireProjectManager(project, currentUserId);
         List<SprintAssignmentRequestResponse> responses = new ArrayList<>();
         for (SprintAssignmentRequest request : assignmentRequestRepository.findAllForProject(projectId)) {
-            responses.add(SprintAssignmentRequestResponse.fromEntity(request));
+            responses.add(toAssignmentRequestResponse(request));
         }
         return responses;
     }
@@ -236,7 +236,7 @@ public class SprintServiceImpl implements SprintService {
         request.setReviewedBy(currentUserId);
         SprintAssignmentRequest approvedRequest = assignmentRequestRepository.save(request);
         rejectRequests(sprint, currentUserId, requestId);
-        return SprintAssignmentRequestResponse.fromEntity(approvedRequest);
+        return toAssignmentRequestResponse(approvedRequest);
     }
 
     private void requireProjectManager(UUID projectId, UUID userId) {
@@ -343,7 +343,15 @@ public class SprintServiceImpl implements SprintService {
         }
         String contributorName = sprint.getAssignedContributorId() == null ? null
                 : userRepository.findById(sprint.getAssignedContributorId()).map(User::getName).orElse(null);
-        return SprintResponse.fromEntity(sprint, milestoneName, contributorName);
+        String creatorName = userRepository.findById(sprint.getCreatedBy()).map(User::getName).orElse(null);
+        return SprintResponse.fromEntity(sprint, milestoneName, contributorName, creatorName);
+    }
+
+    private SprintAssignmentRequestResponse toAssignmentRequestResponse(SprintAssignmentRequest request) {
+        String requesterName = userRepository.findById(request.getRequestedBy()).map(User::getName).orElse(null);
+        String reviewerName = request.getReviewedBy() == null ? null
+                : userRepository.findById(request.getReviewedBy()).map(User::getName).orElse(null);
+        return SprintAssignmentRequestResponse.fromEntity(request, requesterName, reviewerName);
     }
 
     private void checkDatesWithinProject(Project project, LocalDate startDate, LocalDate endDate) {

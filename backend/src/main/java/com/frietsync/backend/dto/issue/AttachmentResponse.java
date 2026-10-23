@@ -16,5 +16,6 @@ public class AttachmentResponse {
     private String contentType;
     private long sizeBytes;
     private UUID uploadedBy;
+    private String uploadedByName;
     private Instant createdAt;
 }

@@ -238,7 +238,9 @@ public class MeetingServiceImpl implements MeetingService {
                     .ifPresent(user -> attendees.add(MeetingAttendeeResponse.fromEntity(
                             attendee, user.getName(), user.getEmail())));
         }
-        return MeetingResponse.fromEntity(meeting, attendees);
+        String organizerName = userRepository.findById(meeting.getOrganizerId())
+                .map(User::getName).orElse(null);
+        return MeetingResponse.fromEntity(meeting, organizerName, attendees);
     }
 
     private Meeting findMeeting(UUID meetingId) {

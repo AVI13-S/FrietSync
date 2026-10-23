@@ -20,6 +20,7 @@ public class AssignmentRequestResponse {
     private AssignmentRequestStatus status;
     private String message;
     private UUID decidedBy;
+    private String decidedByName;
     private Instant decidedAt;
     private Instant createdAt;
 }
