@@ -13,6 +13,7 @@ import com.frietsync.backend.exception.ForbiddenException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.repository.chat.ChatMessageRepository;
 import com.frietsync.backend.repository.chat.ChatAttachmentRepository;
+import com.frietsync.backend.repository.chat.ChatMuteRepository;
 import com.frietsync.backend.service.chat.ChatAttachmentService;
 import com.frietsync.backend.service.chat.ChatAccessService;
 import com.frietsync.backend.repository.project.ProjectMemberRepository;
@@ -50,6 +51,7 @@ public class ChatServiceImpl implements ChatService {
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
     private final NotificationPublisher notificationPublisher;
+    private final ChatMuteRepository chatMuteRepository;
 
     @Override
     @Transactional
@@ -113,6 +115,7 @@ public class ChatServiceImpl implements ChatService {
                 .forEach(member -> recipients.add(member.getUserId()));
 
         recipients.removeAll(mentionedIds);
+        recipients.removeAll(chatMuteRepository.findActiveMutedUserIds(projectId, Instant.now()));
 
         String title = "New message in " + project.getName();
         String notificationMessage = sender.getName() + " sent a message in " + project.getName() + ".";
