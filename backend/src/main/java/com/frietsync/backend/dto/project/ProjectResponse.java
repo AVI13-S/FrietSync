@@ -23,6 +23,7 @@ public class ProjectResponse {
     private LocalDate deadline;
     private LocalDate completeDate;
     private UUID createdBy;
+    private String createdByName;
     private Instant createdAt;
     private Instant updatedAt;
     private int issueCounter;

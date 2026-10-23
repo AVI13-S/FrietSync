@@ -13,6 +13,7 @@ public class IssueHistoryResponse {
 
     private UUID id;
     private UUID actorId;
+    private String actorName;
     private IssueHistoryAction action;
     private String field;
     private String oldValue;

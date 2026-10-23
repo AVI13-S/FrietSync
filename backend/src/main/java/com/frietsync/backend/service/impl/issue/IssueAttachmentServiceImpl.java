@@ -9,6 +9,7 @@ import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.exception.ForbiddenException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.repository.issue.IssueAttachmentRepository;
+import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
 import com.frietsync.backend.service.impl.storage.S3UploadValidator;
 import com.frietsync.backend.service.issue.IssueAttachmentService;
@@ -49,6 +50,7 @@ public class IssueAttachmentServiceImpl implements IssueAttachmentService {
     private final IssueHistoryRecorder history;
     private final S3Client s3Client;
     private final S3ObjectCleanupService cleanupService;
+    private final UserRepository userRepository;
 
     @Value("${app.storage.path:./uploads}")
     private String storagePath;
@@ -246,6 +248,7 @@ public class IssueAttachmentServiceImpl implements IssueAttachmentService {
                 .contentType(a.getContentType())
                 .sizeBytes(a.getSizeBytes())
                 .uploadedBy(a.getUploadedBy())
+                .uploadedByName(userRepository.findById(a.getUploadedBy()).map(user -> user.getName()).orElse(null))
                 .createdAt(a.getCreatedAt())
                 .build();
     }

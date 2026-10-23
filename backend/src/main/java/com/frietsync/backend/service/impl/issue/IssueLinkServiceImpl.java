@@ -15,6 +15,8 @@ import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.repository.issue.IssueLinkRepository;
 import com.frietsync.backend.repository.issue.IssueRepository;
+import com.frietsync.backend.repository.user.UserRepository;
+import com.frietsync.backend.entity.user.User;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
 import com.frietsync.backend.service.issue.IssueLinkService;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +40,7 @@ import java.util.UUID;
 public class IssueLinkServiceImpl implements IssueLinkService {
 
     private final IssueRepository issueRepository;
+    private final UserRepository userRepository;
     private final IssueLinkRepository linkRepository;
     private final ProjectAccess access;
     private final IssueHistoryRecorder history;
@@ -272,6 +275,7 @@ public class IssueLinkServiceImpl implements IssueLinkService {
                     .targetTitle(target == null ? null : target.getTitle())
                     .type(link.getType())
                     .createdBy(link.getCreatedBy())
+                    .createdByName(userRepository.findById(link.getCreatedBy()).map(User::getName).orElse(null))
                     .createdAt(link.getCreatedAt())
                     .build());
         }

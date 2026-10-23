@@ -24,7 +24,9 @@ public class IssueResponse {
     private LocalDate dueDate;
     private Double estimatedHours;
     private UUID createdBy;
+    private String createdByName;
     private List<UUID> assigneeIds;
+    private List<IssueAssigneeResponse> assignees;
     private Instant resolvedAt;
     private Instant closedAt;
     private Instant createdAt;

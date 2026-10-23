@@ -13,11 +13,13 @@ public class IssueCommentResponse {
     private UUID id;
     private UUID issueId;
     private UUID userId;
+    private String userName;
     private String content;
     private Instant createdAt;
 
-    public static IssueCommentResponse fromEntity(IssueComment comment) {
+    public static IssueCommentResponse fromEntity(IssueComment comment, String userName) {
         return IssueCommentResponse.builder().id(comment.getId()).issueId(comment.getIssueId())
-                .userId(comment.getUserId()).content(comment.getContent()).createdAt(comment.getCreatedAt()).build();
+                .userId(comment.getUserId()).userName(userName)
+                .content(comment.getContent()).createdAt(comment.getCreatedAt()).build();
     }
 }

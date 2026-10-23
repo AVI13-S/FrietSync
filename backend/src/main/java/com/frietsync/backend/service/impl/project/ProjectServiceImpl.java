@@ -191,6 +191,7 @@ public class ProjectServiceImpl implements ProjectService {
             progress = completedSprints * 100.0 / totalSprints;
         }
         ProjectResponse response = ProjectResponse.fromEntity(project, progress);
+        response.setCreatedByName(userRepository.findById(project.getCreatedBy()).map(User::getName).orElse(null));
         if (project.getProfilePictureKey() != null && bucketName != null && !bucketName.isBlank()) {
             GetObjectRequest getRequest = GetObjectRequest.builder().bucket(bucketName)
                     .key(project.getProfilePictureKey()).build();
