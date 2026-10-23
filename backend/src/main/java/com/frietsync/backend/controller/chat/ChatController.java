@@ -2,6 +2,7 @@ package com.frietsync.backend.controller.chat;
 
 import com.frietsync.backend.dto.chat.ChatMessageResponse;
 import com.frietsync.backend.dto.chat.ChatAttachmentResponse;
+import com.frietsync.backend.dto.chat.ChatAttachmentPageResponse;
 import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.service.chat.ChatAttachmentService.AttachmentFile;
 import com.frietsync.backend.service.chat.ChatAttachmentService;
@@ -49,6 +50,14 @@ public class ChatController {
             @AuthenticationPrincipal UUID userId,
             @RequestParam("file") MultipartFile file) {
         return ResponseEntity.status(201).body(attachmentService.upload(projectId, userId, file));
+    }
+
+    @GetMapping("/attachments")
+    public ResponseEntity<ChatAttachmentPageResponse> projectAttachments(
+            @PathVariable UUID projectId,
+            @AuthenticationPrincipal UUID userId,
+            @RequestParam(defaultValue = "0") int page) {
+        return ResponseEntity.ok(attachmentService.listProjectAttachments(projectId, userId, page));
     }
 
     @GetMapping("/attachments/{attachmentId}/download")
