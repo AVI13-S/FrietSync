@@ -12,6 +12,8 @@ import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.repository.user.AccountCleanupRepository;
 import com.frietsync.backend.repository.issue.IssueAttachmentRepository;
 import com.frietsync.backend.repository.workspace.WorkspaceRepository;
+import com.frietsync.backend.repository.integration.GoogleConnectionRepository;
+import com.frietsync.backend.repository.integration.GitHubConnectionRepository;
 import com.frietsync.backend.service.impl.issue.S3ObjectCleanupService;
 import com.frietsync.backend.service.impl.storage.S3UploadValidator;
 import com.frietsync.backend.service.user.UserService;
@@ -42,6 +44,8 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final WorkspaceRepository workspaceRepository;
+    private final GoogleConnectionRepository googleConnectionRepository;
+    private final GitHubConnectionRepository gitHubConnectionRepository;
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
     private final S3ObjectCleanupService cleanupService;
@@ -256,7 +260,9 @@ public class UserServiceImpl implements UserService {
         }
         return new ProfileResponse(user.getId(), user.getWorkspaceId(), user.getName(), user.getEmail(),
                 user.getBio(), user.getJobTitle(), user.getRole(), user.getGithubUrl(), user.getLinkedinUrl(),
-                user.getPortfolioUrl(), pictureUrl);
+                user.getPortfolioUrl(), pictureUrl,
+                googleConnectionRepository.findByUser_Id(user.getId()).isPresent(),
+                gitHubConnectionRepository.findByUser_Id(user.getId()).isPresent());
     }
 
     private String validateUrl(String value, String fieldName) {
