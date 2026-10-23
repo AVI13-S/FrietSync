@@ -21,6 +21,7 @@ import com.frietsync.backend.entity.workspace.Workspace;
 import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.exception.ForbiddenException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
+import com.frietsync.backend.exception.StorageServiceException;
 import com.frietsync.backend.repository.chat.ChatMessageRepository;
 import com.frietsync.backend.repository.meeting.MeetingAttendeeRepository;
 import com.frietsync.backend.repository.meeting.MeetingRepository;
@@ -42,11 +43,25 @@ import com.frietsync.backend.service.impl.project.ProjectAccess;
 import com.frietsync.backend.service.issue.IssueService;
 import com.frietsync.backend.service.impl.issue.IssueHistoryRecorder;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.Duration;
+import java.io.IOException;
 import java.util.*;
 import java.util.stream.Stream;
 
@@ -73,10 +88,16 @@ public class ProjectServiceImpl implements ProjectService {
     private final IssueService issueService;
     private final ReleaseService releaseService;
     private final ProjectAccess projectAccess;
+    private final S3Client s3Client;
+    private final S3Presigner s3Presigner;
+    private final com.frietsync.backend.service.impl.issue.S3ObjectCleanupService cleanupService;
+
+    @Value("${aws.s3.bucket:}")
+    private String bucketName;
 
     @Override
     @Transactional
-    public ProjectResponse create(ProjectRequest request, UUID userId) {
+    public ProjectResponse create(ProjectRequest request, MultipartFile profilePicture, UUID userId) {
         User admin = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         if (admin.getRole() != Role.ADMIN) {
@@ -98,7 +119,12 @@ public class ProjectServiceImpl implements ProjectService {
         project.setWorkspaceId(workspace.getId());
         project.setAdminId(workspace.getAdminId());
         apply(project, request, userId, workspace.getId());
-        return toResponse(projectRepository.save(project));
+        Project saved = projectRepository.save(project);
+        if (profilePicture != null && !profilePicture.isEmpty()) {
+            saved.setProfilePictureKey(uploadProfilePicture(saved.getId(), profilePicture));
+            saved = projectRepository.save(saved);
+        }
+        return toResponse(saved);
     }
 
     private UUID findProjectManagerId(String email, UUID workspaceId) {
@@ -138,7 +164,7 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     @Transactional
-    public ProjectResponse update(UUID projectId, ProjectRequest request, UUID userId) {
+    public ProjectResponse update(UUID projectId, ProjectRequest request, MultipartFile profilePicture, UUID userId) {
         Project project = projectRepository.findByIdForUpdate(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
         projectAccess.requireWorkspaceAndActive(project, userId);
@@ -148,6 +174,11 @@ public class ProjectServiceImpl implements ProjectService {
             throw new ForbiddenException("Only the admin or project manager can edit this project");
         }
         apply(project, request, userId, project.getWorkspaceId());
+        if (profilePicture != null && !profilePicture.isEmpty()) {
+            String previousKey = project.getProfilePictureKey();
+            project.setProfilePictureKey(uploadProfilePicture(projectId, profilePicture));
+            enqueueStoredFileDeletion(previousKey);
+        }
         return toResponse(projectRepository.save(project));
     }
 
@@ -160,6 +191,13 @@ public class ProjectServiceImpl implements ProjectService {
             progress = completedSprints * 100.0 / totalSprints;
         }
         ProjectResponse response = ProjectResponse.fromEntity(project, progress);
+        if (project.getProfilePictureKey() != null && bucketName != null && !bucketName.isBlank()) {
+            GetObjectRequest getRequest = GetObjectRequest.builder().bucket(bucketName)
+                    .key(project.getProfilePictureKey()).build();
+            GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+                    .signatureDuration(Duration.ofHours(1)).getObjectRequest(getRequest).build();
+            response.setProfilePictureUrl(s3Presigner.presignGetObject(presignRequest).url().toString());
+        }
         response.setProjectManager(userSummary(project.getProjectManagerId()));
         response.setTeamLead(userSummary(project.getTeamLeadId()));
         return response;
@@ -185,6 +223,7 @@ public class ProjectServiceImpl implements ProjectService {
         sprintRepository.deleteByProjectId(projectId);
         issueService.deleteAllForProject(projectId);
         projectDocumentRepository.deleteByProjectId(projectId);
+        enqueueStoredFileDeletion(project.getProfilePictureKey());
         chatMessageRepository.deleteByProjectId(projectId);
         meetingAttendeeRepository.deleteByProjectId(projectId);
         meetingRepository.deleteByProjectId(projectId);
@@ -362,6 +401,49 @@ public class ProjectServiceImpl implements ProjectService {
         if (!workspaceId.equals(user.getWorkspaceId())) {
             throw new BadRequestException(subject + " must belong to the project's workspace");
         }
+    }
+
+    private String uploadProfilePicture(UUID projectId, MultipartFile file) {
+        if (bucketName == null || bucketName.isBlank()) {
+            throw new StorageServiceException("Project profile picture storage is not configured");
+        }
+        String originalName = file.getOriginalFilename();
+        String safeName = originalName == null ? "project-picture.png"
+                : originalName.replaceAll("[^A-Za-z0-9._-]", "_");
+        if (safeName.length() > 255) safeName = safeName.substring(safeName.length() - 255);
+        String extension = safeName.substring(safeName.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
+        String contentType = switch (extension) {
+            case "png" -> "image/png";
+            case "jpg", "jpeg" -> "image/jpeg";
+            default -> throw new BadRequestException("Project picture must be a PNG, JPG, or JPEG image");
+        };
+        if (file.isEmpty() || file.getSize() > 5L * 1024 * 1024) {
+            throw new BadRequestException("Project picture must be non-empty and no larger than 5 MB");
+        }
+        String key = "projects/" + projectId + "/profile/" + UUID.randomUUID() + "." + extension;
+        try (var input = file.getInputStream()) {
+            s3Client.putObject(PutObjectRequest.builder().bucket(bucketName).key(key)
+                            .contentType(contentType).build(),
+                    RequestBody.fromInputStream(input, file.getSize()));
+        } catch (IOException | SdkClientException | S3Exception exception) {
+            throw new StorageServiceException("Could not upload project profile picture", exception);
+        }
+        deleteS3ObjectOnRollback(key);
+        return key;
+    }
+
+    private void enqueueStoredFileDeletion(String key) {
+        if (key != null && !key.isBlank()) cleanupService.enqueue(bucketName, key);
+    }
+
+    private void deleteS3ObjectOnRollback(String key) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) return;
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status != STATUS_COMMITTED) cleanupService.enqueue(bucketName, key);
+            }
+        });
     }
 
     private void updateTeamSize(Project project) {

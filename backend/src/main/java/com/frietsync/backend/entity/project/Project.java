@@ -27,6 +27,9 @@ public class Project extends BaseEntity {
     @Column(length = 1000)
     private String description;
 
+    @Column(name = "profile_picture_key", length = 2000)
+    private String profilePictureKey;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ProjectStatus status = ProjectStatus.PLANNING;
