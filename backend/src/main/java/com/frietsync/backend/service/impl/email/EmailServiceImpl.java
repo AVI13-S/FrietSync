@@ -51,6 +51,20 @@ public class EmailServiceImpl implements EmailService {
         sendSimpleMail(details);
     }
 
+    @Override
+    @Async
+    public void sendMeetingMail(String recipient, String title, String agenda,
+                                String startAt, String endAt, String meetingLink) {
+        EmailDetails details = new EmailDetails();
+        details.setRecipient(recipient);
+        details.setSubject("Meeting scheduled: " + title);
+        details.setMsgBody("A meeting has been scheduled.\n\nAgenda: " + agenda
+                + "\nStarts: " + startAt + "\nEnds: " + endAt);
+        details.setActionUrl(meetingLink);
+        details.setActionLabel("Join Google Meet");
+        sendSimpleMail(details);
+    }
+
     private String formatHtml(EmailDetails details) {
         String safeSubject = escapeHtml(details.getSubject());
         String formattedBody = escapeHtml(details.getMsgBody()).replace("\r\n", "\n").replace("\n", "<br>");

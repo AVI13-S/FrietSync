@@ -36,7 +36,7 @@ public class NotificationPublisherImpl implements NotificationPublisher {
 
         NotificationPreference pref = preferenceRepository.findByUserIdAndType(recipientId, type).orElse(null);
         boolean inApp = pref == null || pref.isInApp();
-        boolean email = pref != null && pref.isEmailEnabled();
+        boolean email = type != NotificationType.MEETING_INVITE && pref != null && pref.isEmailEnabled();
         if (!inApp && !email) {
             return;
         }
