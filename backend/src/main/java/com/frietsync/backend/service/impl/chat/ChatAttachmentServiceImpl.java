@@ -1,6 +1,7 @@
 package com.frietsync.backend.service.impl.chat;
 
 import com.frietsync.backend.dto.chat.ChatAttachmentResponse;
+import com.frietsync.backend.dto.chat.ChatAttachmentPageResponse;
 import com.frietsync.backend.entity.chat.ChatAttachment;
 import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
@@ -11,6 +12,8 @@ import com.frietsync.backend.service.impl.storage.S3UploadValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +39,7 @@ import java.util.UUID;
 public class ChatAttachmentServiceImpl implements ChatAttachmentService {
 
     private static final long MAX_SIZE = 25L * 1024 * 1024;
+    private static final int ATTACHMENT_PAGE_SIZE = 10;
 
     private final ChatAttachmentRepository repository;
     private final ChatAccessService chatAccessService;
@@ -95,6 +99,25 @@ public class ChatAttachmentServiceImpl implements ChatAttachmentService {
         }
         attachments.forEach(attachment -> attachment.setMessageId(messageId));
         return repository.saveAll(attachments).stream().map(ChatAttachmentResponse::fromEntity).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ChatAttachmentPageResponse listProjectAttachments(UUID projectId, UUID userId, int page) {
+        chatAccessService.assertProjectAccess(projectId, userId);
+        if (page < 0) {
+            throw new BadRequestException("Page must be zero or greater");
+        }
+        Page<ChatAttachment> result = repository
+                .findByProjectIdAndMessageIdIsNotNullOrderByCreatedAtDescIdDesc(
+                        projectId, PageRequest.of(page, ATTACHMENT_PAGE_SIZE));
+        return ChatAttachmentPageResponse.builder()
+                .items(result.getContent().stream().map(ChatAttachmentResponse::fromEntity).toList())
+                .page(result.getNumber())
+                .size(result.getSize())
+                .totalElements(result.getTotalElements())
+                .totalPages(result.getTotalPages())
+                .build();
     }
 
     @Override
