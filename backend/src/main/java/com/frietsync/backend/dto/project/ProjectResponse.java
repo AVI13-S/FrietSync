@@ -17,6 +17,7 @@ public class ProjectResponse {
     private UUID workspaceId;
     private String name;
     private String description;
+    private String profilePictureUrl;
     private ProjectStatus status;
     private LocalDate startDate;
     private LocalDate deadline;
