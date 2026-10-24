@@ -13,7 +13,6 @@ import com.frietsync.backend.entity.project.Project;
 import com.frietsync.backend.entity.project.Milestone;
 import com.frietsync.backend.entity.issue.Issue;
 import com.frietsync.backend.entity.sprint.Sprint;
-import com.frietsync.backend.entity.workspace.Workspace;
 import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.exception.ForbiddenException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
@@ -25,16 +24,17 @@ import com.frietsync.backend.repository.project.MilestoneRepository;
 import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
 import com.frietsync.backend.repository.sprint.SprintRepository;
-import com.frietsync.backend.repository.workspace.WorkspaceRepository;
 import com.frietsync.backend.service.poll.PollService;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
 import lombok.RequiredArgsConstructor;
-import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -57,7 +57,8 @@ public class PollServiceImpl implements PollService {
     private final MilestoneRepository milestoneRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final ProjectAccess projectAccess;
-    private final WorkspaceRepository workspaceRepository;
+    private final PollExpirationScheduler expirationScheduler;
+    private final TransactionTemplate transactionTemplate;
 
     @Override
     @Transactional
@@ -65,8 +66,13 @@ public class PollServiceImpl implements PollService {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
         requireMember(project, userId);
-        if (request.getEndsAt() != null && !request.getEndsAt().isAfter(Instant.now())) {
-            throw new BadRequestException("Poll deadline must be in the future");
+        Instant endsAt = null;
+        if (request.getDurationSeconds() != null) {
+            try {
+                endsAt = Instant.now().plusSeconds(request.getDurationSeconds());
+            } catch (ArithmeticException | java.time.DateTimeException exception) {
+                throw new BadRequestException("Poll duration is out of range");
+            }
         }
         int linkedObjectCount = (request.getIssueId() == null ? 0 : 1)
                 + (request.getSprintId() == null ? 0 : 1)
@@ -110,7 +116,7 @@ public class PollServiceImpl implements PollService {
         poll.setIssueId(request.getIssueId());
         poll.setSprintId(request.getSprintId());
         poll.setMilestoneId(request.getMilestoneId());
-        poll.setEndsAt(request.getEndsAt());
+        poll.setEndsAt(endsAt);
         poll = pollRepository.save(poll);
         List<PollOption> options = new ArrayList<>();
         for (int index = 0; index < request.getOptions().size(); index++) {
@@ -122,6 +128,10 @@ public class PollServiceImpl implements PollService {
         }
         PollResponse result = response(poll, userId);
         publishAfterCommit("POLL_CREATED", result);
+        if (endsAt != null) {
+            Instant pollEndsAt = endsAt;
+            afterCommit(() -> scheduleExpiration(poll.getId(), pollEndsAt));
+        }
         return result;
     }
 
@@ -216,26 +226,29 @@ public class PollServiceImpl implements PollService {
         return response(poll, userId);
     }
 
-    @Scheduled(fixedDelayString = "${app.polls.expiry.delay-ms:10000}")
-    @Transactional
-    public void closeExpiredPolls() {
-        Instant now = Instant.now();
-        List<Poll> expiredPolls = pollRepository
-                .findByStatusAndEndsAtLessThanEqual(PollStatus.OPEN, now);
-        for (Poll expiredPoll : expiredPolls) {
-            var pollResult = pollRepository.findByIdForUpdate(expiredPoll.getId());
-            if (pollResult.isEmpty()) continue;
-            Poll poll = pollResult.get();
-            Project project = projectRepository.findById(poll.getProjectId()).orElse(null);
-            Workspace workspace = project == null || project.getWorkspaceId() == null
-                    ? null : workspaceRepository.findById(project.getWorkspaceId()).orElse(null);
-            if (workspace == null || workspace.isPendingDeletion()) continue;
-            if (poll.getStatus() == PollStatus.OPEN && poll.getEndsAt() != null
-                    && !poll.getEndsAt().isAfter(now)) {
+    @EventListener(ApplicationReadyEvent.class)
+    public void scheduleExistingPolls() {
+        pollRepository.findByStatusAndEndsAtIsNotNull(PollStatus.OPEN)
+                .forEach(poll -> scheduleExpiration(poll.getId(), poll.getEndsAt()));
+    }
+
+    private void scheduleExpiration(UUID pollId, Instant endsAt) {
+        expirationScheduler.schedule(pollId, endsAt, () -> transactionTemplate.executeWithoutResult(
+                transaction -> expirePoll(pollId)));
+    }
+
+    private void expirePoll(UUID pollId) {
+        pollRepository.findByIdForUpdate(pollId).ifPresent(poll -> {
+            if (poll.getStatus() != PollStatus.OPEN || poll.getEndsAt() == null) {
+                return;
+            }
+            if (!poll.getEndsAt().isAfter(Instant.now())) {
                 closePoll(poll);
                 publishAfterCommit("POLL_CLOSED", response(poll, poll.getCreatedBy()));
+            } else {
+                afterCommit(() -> scheduleExpiration(poll.getId(), poll.getEndsAt()));
             }
-        }
+        });
     }
 
     private Poll closeIfExpired(Poll poll) {
@@ -254,6 +267,7 @@ public class PollServiceImpl implements PollService {
         poll.setStatus(PollStatus.CLOSED);
         poll.setClosedAt(Instant.now());
         pollRepository.save(poll);
+        afterCommit(() -> expirationScheduler.cancel(poll.getId()));
     }
 
     private void publishAfterCommit(String type, PollResponse poll) {
