@@ -18,7 +18,9 @@ public record ChatMessageResponse(
         UUID replyToId,
         String replyToSenderName,
         String replyToContent,
-        List<UUID> mentionedUserIds
+        List<UUID> mentionedUserIds,
+        boolean deleted,
+        Instant editedAt
 ) {
 
     public static ChatMessageResponse fromEntity(ChatMessage message) {
@@ -27,6 +29,7 @@ public record ChatMessageResponse(
 
     public static ChatMessageResponse fromEntity(
             ChatMessage message, List<ChatAttachmentResponse> attachments) {
+        boolean deleted = message.isDeleted();
         UUID replyToId = null;
         String replyToSenderName = null;
         String replyToContent = null;
@@ -35,8 +38,8 @@ public record ChatMessageResponse(
         if (parent != null) {
             replyToId = parent.getId();
             replyToSenderName = parent.getSenderName();
-            replyToContent = parent.getContent();
-            if (replyToContent.length() > 100) {
+            replyToContent = parent.isDeleted() ? null : parent.getContent();
+            if (replyToContent != null && replyToContent.length() > 100) {
                 replyToContent = replyToContent.substring(0, 100) + "...";
             }
         }
@@ -46,13 +49,15 @@ public record ChatMessageResponse(
                 message.getProjectId(),
                 message.getSenderId(),
                 message.getSenderName(),
-                message.getContent(),
-                attachments,
+                deleted ? "" : message.getContent(),
+                deleted ? List.of() : attachments,
                 message.getCreatedAt(),
                 replyToId,
                 replyToSenderName,
                 replyToContent,
-                new ArrayList<>(message.getMentionedUserIds())
+                deleted ? new ArrayList<>() : new ArrayList<>(message.getMentionedUserIds()),
+                deleted,
+                message.getEditedAt()
         );
     }
 }

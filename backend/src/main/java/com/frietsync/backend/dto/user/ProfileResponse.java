@@ -15,6 +15,8 @@ public record ProfileResponse(
         String githubUrl,
         String linkedinUrl,
         String portfolioUrl,
-        String profilePictureUrl
+        String profilePictureUrl,
+        boolean googleConnected,
+        boolean githubConnected
 ) {
 }

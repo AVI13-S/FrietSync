@@ -163,13 +163,19 @@ public class ActivityServiceImpl implements ActivityService {
 
 
     @Override
-    public List<ActivityResponse> recentActivity(UUID projectId, UUID userId, int limit) {
+    public IssuePageResponse<ActivityResponse> recentActivity(UUID projectId, UUID userId, int page, int size) {
         Project project = projectAccess.project(projectId);
         projectAccess.requireMember(project, userId);
 
-        Pageable pageable = PageRequest.of(0, limit);
+        Pageable pageable = PageRequest.of(page, size);
         Page<IssueHistory> entries = historyRepository.findAllForProject(projectId, pageable);
-        return toActivities(entries.getContent());
+        return IssuePageResponse.<ActivityResponse>builder()
+                .items(toActivities(entries.getContent()))
+                .page(entries.getNumber())
+                .size(entries.getSize())
+                .totalElements(entries.getTotalElements())
+                .totalPages(entries.getTotalPages())
+                .build();
     }
 
     @Override
