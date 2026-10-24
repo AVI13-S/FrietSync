@@ -171,7 +171,7 @@ public class MeetingServiceImpl implements MeetingService {
         Project project = findProject(meeting.getProjectId());
         projectAccess.requireWorkspaceAndActive(project, userId);
         if (!isProjectManager(project, userId)) {
-            throw new ForbiddenException("Only the project manager can edit a meeting");
+            throw new ForbiddenException("Only the project admin or project manager can edit a meeting");
         }
 
         if (request.getTitle() != null) {
@@ -306,9 +306,11 @@ public class MeetingServiceImpl implements MeetingService {
     }
 
     private boolean isProjectManager(Project project, UUID userId) {
-        if (userId == null || !userId.equals(project.getProjectManagerId())) {
+        if (userId == null) {
             return false;
         }
+        if (userId.equals(project.getAdminId())) return true;
+        if (!userId.equals(project.getProjectManagerId())) return false;
         User user = userRepository.findById(userId).orElse(null);
         return user != null && user.getRole() == Role.PROJECT_MANAGER;
     }

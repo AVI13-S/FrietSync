@@ -121,8 +121,9 @@ public class MilestoneServiceImpl implements MilestoneService {
 
     private void requireProjectManager(Project project, UUID userId) {
         projectAccess.requireWorkspaceAndActive(project, userId);
-        if (userId == null || !userId.equals(project.getProjectManagerId())) {
-            throw new ForbiddenException("Only the project manager can manage milestones");
+        if (userId == null || (!userId.equals(project.getAdminId())
+                && !userId.equals(project.getProjectManagerId()))) {
+            throw new ForbiddenException("Only the project admin or project manager can manage milestones");
         }
     }
 

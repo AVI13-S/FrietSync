@@ -1,6 +1,7 @@
 package com.frietsync.backend.service.impl.issue;
 
 import com.frietsync.backend.dto.issue.IssueHistoryResponse;
+import com.frietsync.backend.dto.issue.ChangeIssueStatusRequest;
 import com.frietsync.backend.dto.issue.GitHubIssueAction;
 import com.frietsync.backend.dto.issue.IssueCreateV2Request;
 import com.frietsync.backend.dto.issue.IssuePageResponse;
@@ -78,7 +79,7 @@ public class IssueServiceImpl implements IssueService {
     @Override
     public IssueResponse create(UUID projectId, IssueRequest r, UUID userId) {
         Issue issue = createIssue(projectId, r.getTitle(), r.getDescription(), r.getPriority(), r.getDueDate(),
-                r.getEstimatedHours(), userId, false);
+                r.getEstimatedHours(), userId);
         if (r.getGithubIssueNumber() != null) {
             return githubIssueLinkService.link(issue.getId(), r.getGithubIssueNumber(), userId);
         }
@@ -98,7 +99,7 @@ public class IssueServiceImpl implements IssueService {
             throw new BadRequestException("githubIssueNumber is only allowed for LINK_EXISTING");
         }
         Issue issue = createIssue(projectId, request.getTitle(), request.getDescription(), request.getPriority(),
-                request.getDueDate(), request.getEstimatedHours(), userId, true);
+                request.getDueDate(), request.getEstimatedHours(), userId);
         return switch (action) {
             case LOCAL -> mapper.toResponse(issue);
             case LINK_EXISTING -> githubIssueLinkService.link(issue.getId(), request.getGithubIssueNumber(), userId);
@@ -107,18 +108,15 @@ public class IssueServiceImpl implements IssueService {
     }
 
     private Issue createIssue(UUID projectId, String title, String description, IssuePriority priority,
-                              java.time.LocalDate dueDate, Double estimatedHours, UUID userId,
-                              boolean allowProjectAdmin) {
+                              java.time.LocalDate dueDate, Double estimatedHours, UUID userId) {
         Project project = projectRepository.findByIdForUpdate(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
         Role role = access.requireMember(project, userId);
-        boolean allowed = role == Role.PROJECT_MANAGER || role == Role.TEAM_LEAD || role == Role.REPORTER
-                || (allowProjectAdmin && role == Role.ADMIN);
+        boolean allowed = role == Role.ADMIN || role == Role.PROJECT_MANAGER
+                || role == Role.TEAM_LEAD || role == Role.REPORTER;
         if (!allowed) {
-            String message = allowProjectAdmin
-                    ? "Only the project admin, project manager, team lead, or a reviewer can create issues"
-                    : "Only the project manager, team lead, or a reporter can create issues";
-            throw new ForbiddenException(message);
+            throw new ForbiddenException(
+                    "Only the project admin, project manager, team lead, or a reporter can create issues");
         }
         project.setIssueCounter(project.getIssueCounter() + 1);
         projectRepository.save(project);
@@ -178,11 +176,11 @@ public class IssueServiceImpl implements IssueService {
         Issue issue = access.issue(issueId);
         Project project = access.project(issue.getProjectId());
         Role role = access.requireMember(project, userId);
-        boolean canEdit = role == Role.PROJECT_MANAGER
+        boolean canEdit = role == Role.ADMIN || role == Role.PROJECT_MANAGER
                 || role == Role.TEAM_LEAD
                 || (role == Role.REPORTER && userId.equals(issue.getCreatedBy()));
         if (!canEdit) {
-            throw new ForbiddenException("Only the project manager, team lead or issue-creating reporter can edit this issue");
+            throw new ForbiddenException("Only the project admin, project manager, team lead or issue-creating reporter can edit this issue");
         }
         if (issue.getStatus() == IssueStatus.CLOSED) {
             throw new BadRequestException("Closed issues cannot be edited");
@@ -214,6 +212,40 @@ public class IssueServiceImpl implements IssueService {
         }
 
         issueRepository.save(issue);
+        return mapper.toResponse(issue);
+    }
+
+    @Override
+    public IssueResponse changeStatus(UUID issueId, ChangeIssueStatusRequest request, UUID userId) {
+        Issue issue = access.issue(issueId);
+        Project project = access.project(issue.getProjectId());
+        Role role = access.requireMember(project, userId);
+        if (role != Role.ADMIN && role != Role.PROJECT_MANAGER) {
+            throw new ForbiddenException("Only the project admin or project manager can change issue status");
+        }
+
+        IssueStatus previousStatus = issue.getStatus();
+        IssueStatus newStatus = request.status();
+        if (previousStatus == newStatus) {
+            return mapper.toResponse(issue);
+        }
+
+        Instant now = Instant.now();
+        issue.setStatus(newStatus);
+        if (newStatus == IssueStatus.CLOSED) {
+            if (issue.getResolvedAt() == null) issue.setResolvedAt(now);
+            issue.setClosedAt(now);
+        } else if (newStatus == IssueStatus.RESOLVED) {
+            issue.setResolvedAt(now);
+            issue.setClosedAt(null);
+        } else {
+            issue.setResolvedAt(null);
+            issue.setClosedAt(null);
+        }
+
+        issueRepository.save(issue);
+        history.record(issueId, userId, IssueHistoryAction.UPDATED,
+                "status", previousStatus, newStatus);
         return mapper.toResponse(issue);
     }
 
@@ -284,8 +316,9 @@ public class IssueServiceImpl implements IssueService {
         Issue issue = access.issue(issueId);
         Project project = access.project(issue.getProjectId());
         Role role = access.requireMember(project, userId);
-        if (role != Role.PROJECT_MANAGER && role != Role.TEAM_LEAD && role != Role.REPORTER) {
-            throw new ForbiddenException("Only the project manager, team lead or a reporter can review this issue");
+        if (role != Role.ADMIN && role != Role.PROJECT_MANAGER && role != Role.TEAM_LEAD
+                && role != Role.REPORTER) {
+            throw new ForbiddenException("Only the project admin, project manager, team lead or a reporter can review this issue");
         }
         if (issue.getStatus() != IssueStatus.RESOLVED) {
             throw new BadRequestException("Only resolved issues can be reviewed");

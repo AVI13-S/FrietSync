@@ -1,6 +1,7 @@
 package com.frietsync.backend.service.issue;
 
 import com.frietsync.backend.dto.issue.IssueHistoryResponse;
+import com.frietsync.backend.dto.issue.ChangeIssueStatusRequest;
 import com.frietsync.backend.dto.issue.IssueCreateV2Request;
 import com.frietsync.backend.dto.issue.IssuePageResponse;
 import com.frietsync.backend.dto.issue.IssueLabelRequest;
@@ -25,6 +26,8 @@ public interface IssueService {
     IssueResponse get(UUID issueId, UUID userId);
 
     IssueResponse update(UUID issueId, IssueUpdateRequest request, UUID userId);
+
+    IssueResponse changeStatus(UUID issueId, ChangeIssueStatusRequest request, UUID userId);
 
     void delete(UUID issueId, UUID userId);
 

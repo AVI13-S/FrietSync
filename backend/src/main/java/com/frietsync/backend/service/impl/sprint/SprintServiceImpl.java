@@ -1,6 +1,7 @@
 package com.frietsync.backend.service.impl.sprint;
 
 import com.frietsync.backend.dto.sprint.CreateSprintRequest;
+import com.frietsync.backend.dto.sprint.ChangeSprintStatusRequest;
 import com.frietsync.backend.dto.sprint.SprintAssignmentRequestResponse;
 import com.frietsync.backend.dto.sprint.SprintResponse;
 import com.frietsync.backend.dto.sprint.UpdateSprintRequest;
@@ -122,6 +123,15 @@ public class SprintServiceImpl implements SprintService {
         sprint.setEndDate(updatedEndDate);
         Sprint updatedSprint = sprintRepository.save(sprint);
         return toResponse(updatedSprint);
+    }
+
+    @Override
+    @Transactional
+    public SprintResponse changeStatus(UUID sprintId, ChangeSprintStatusRequest request, UUID currentUserId) {
+        Sprint sprint = findSprintForWrite(sprintId);
+        requireProjectManager(sprint.getProjectId(), currentUserId);
+        sprint.setStatus(request.status());
+        return toResponse(sprintRepository.save(sprint));
     }
 
     @Override
@@ -262,9 +272,11 @@ public class SprintServiceImpl implements SprintService {
 
     private void requireProjectManager(Project project, UUID userId) {
         projectAccess.requireWorkspaceAndActive(project, userId);
-        if (userId == null || !userId.equals(project.getProjectManagerId())) {
-            throw new ForbiddenException("Only the project manager can perform this action");
+        if (userId == null || (!userId.equals(project.getAdminId())
+                && !userId.equals(project.getProjectManagerId()))) {
+            throw new ForbiddenException("Only the project admin or project manager can perform this action");
         }
+        if (userId.equals(project.getAdminId())) return;
         User manager = userRepository.findById(userId)
                 .orElseThrow(() -> new ForbiddenException("Project manager is not a valid user"));
         if (manager.getRole() != Role.PROJECT_MANAGER) {
@@ -274,12 +286,16 @@ public class SprintServiceImpl implements SprintService {
 
     private void requireProjectManagerOrTeamLead(Project project, UUID userId) {
         projectAccess.requireWorkspaceAndActive(project, userId);
+        if (userId != null && userId.equals(project.getAdminId())) {
+            requireProjectManager(project, userId);
+            return;
+        }
         if (userId != null && userId.equals(project.getProjectManagerId())) {
             requireProjectManager(project, userId);
             return;
         }
         if (userId == null || !userId.equals(project.getTeamLeadId())) {
-            throw new ForbiddenException("Only the project manager or team lead can create a sprint");
+            throw new ForbiddenException("Only the project admin, project manager or team lead can create a sprint");
         }
         User teamLead = userRepository.findById(userId)
                 .orElseThrow(() -> new ForbiddenException("Team lead is not a valid user"));
@@ -290,12 +306,16 @@ public class SprintServiceImpl implements SprintService {
 
     private void requireManagerOrAssignedContributor(Sprint sprint, UUID userId) {
         Project project = findProjectOrThrow(sprint.getProjectId());
+        if (userId != null && userId.equals(project.getAdminId())) {
+            requireProjectManager(project, userId);
+            return;
+        }
         if (userId != null && userId.equals(project.getProjectManagerId())) {
             requireProjectManager(project, userId);
             return;
         }
         if (userId == null || !userId.equals(sprint.getAssignedContributorId())) {
-            throw new ForbiddenException("Only the project manager or assigned contributor can update sprint status");
+            throw new ForbiddenException("Only the project admin, project manager or assigned contributor can update sprint status");
         }
         checkContributor(sprint.getProjectId(), userId);
     }

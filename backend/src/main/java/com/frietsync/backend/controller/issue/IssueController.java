@@ -1,6 +1,7 @@
 package com.frietsync.backend.controller.issue;
 
 import com.frietsync.backend.dto.issue.IssuePageResponse;
+import com.frietsync.backend.dto.issue.ChangeIssueStatusRequest;
 import com.frietsync.backend.dto.issue.GitHubIssueLinkRequest;
 import com.frietsync.backend.dto.issue.IssueHistoryResponse;
 import com.frietsync.backend.dto.issue.IssueLabelRequest;
@@ -86,6 +87,13 @@ public class IssueController {
                                                 @Valid @RequestBody IssueUpdateRequest request,
                                                 @AuthenticationPrincipal UUID userId) {
         return ResponseEntity.ok(issueService.update(issueId, request, userId));
+    }
+
+    @PatchMapping("/issues/{issueId}/status")
+    public ResponseEntity<IssueResponse> changeStatus(@PathVariable UUID issueId,
+                                                       @Valid @RequestBody ChangeIssueStatusRequest request,
+                                                       @AuthenticationPrincipal UUID userId) {
+        return ResponseEntity.ok(issueService.changeStatus(issueId, request, userId));
     }
 
     @DeleteMapping("/issues/{issueId}")

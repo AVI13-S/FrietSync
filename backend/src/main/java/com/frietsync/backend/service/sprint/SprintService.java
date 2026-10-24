@@ -1,6 +1,7 @@
 package com.frietsync.backend.service.sprint;
 
 import com.frietsync.backend.dto.sprint.CreateSprintRequest;
+import com.frietsync.backend.dto.sprint.ChangeSprintStatusRequest;
 import com.frietsync.backend.dto.sprint.SprintAssignmentRequestResponse;
 import com.frietsync.backend.dto.sprint.SprintResponse;
 import com.frietsync.backend.dto.sprint.UpdateSprintRequest;
@@ -13,6 +14,7 @@ public interface SprintService {
     List<SprintResponse> listSprints(UUID projectId, UUID currentUserId);
     SprintResponse getSprint(UUID sprintId, UUID currentUserId);
     SprintResponse updateSprint(UUID sprintId, UpdateSprintRequest request, UUID currentUserId);
+    SprintResponse changeStatus(UUID sprintId, ChangeSprintStatusRequest request, UUID currentUserId);
     SprintResponse startSprint(UUID sprintId, UUID currentUserId);
     SprintResponse completeSprint(UUID sprintId, UUID currentUserId);
     void deleteSprint(UUID sprintId, UUID currentUserId);

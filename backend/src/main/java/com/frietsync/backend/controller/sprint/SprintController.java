@@ -1,6 +1,7 @@
 package com.frietsync.backend.controller.sprint;
 
 import com.frietsync.backend.dto.sprint.ApproveSprintAssignmentRequest;
+import com.frietsync.backend.dto.sprint.ChangeSprintStatusRequest;
 import com.frietsync.backend.dto.sprint.AssignSprintRequest;
 import com.frietsync.backend.dto.sprint.CreateSprintRequest;
 import com.frietsync.backend.dto.sprint.SprintAssignmentRequestResponse;
@@ -53,6 +54,14 @@ public class SprintController {
             @RequestBody UpdateSprintRequest request,
             @AuthenticationPrincipal UUID currentUserId) {
         return ResponseEntity.ok(sprintService.updateSprint(id, request, currentUserId));
+    }
+
+    @PatchMapping("/sprints/{id}/status")
+    public ResponseEntity<SprintResponse> changeStatus(
+            @PathVariable UUID id,
+            @Valid @RequestBody ChangeSprintStatusRequest request,
+            @AuthenticationPrincipal UUID currentUserId) {
+        return ResponseEntity.ok(sprintService.changeStatus(id, request, currentUserId));
     }
 
     @PostMapping("/sprints/{id}/start")
