@@ -31,6 +31,7 @@ import com.frietsync.backend.repository.issue.IssueRepository;
 import com.frietsync.backend.repository.project.MilestoneRepository;
 import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
+import com.frietsync.backend.repository.project.ProjectGitHubRepositoryRepository;
 import com.frietsync.backend.repository.document.ProjectDocumentRepository;
 import com.frietsync.backend.repository.sprint.SprintAssignmentRequestRepository;
 import com.frietsync.backend.repository.sprint.SprintRepository;
@@ -71,6 +72,7 @@ import java.util.stream.Stream;
 public class ProjectServiceImpl implements ProjectService {
 
     private final ProjectRepository projectRepository;
+    private final ProjectGitHubRepositoryRepository projectGitHubRepositoryRepository;
     private final ProjectDocumentRepository projectDocumentRepository;
     private final UserRepository userRepository;
     private final IssueRepository issueRepository;
@@ -228,6 +230,10 @@ public class ProjectServiceImpl implements ProjectService {
             progress = completedSprints * 100.0 / totalSprints;
         }
         ProjectResponse response = ProjectResponse.fromEntity(project, progress);
+        projectGitHubRepositoryRepository.findByProjectId(project.getId()).ifPresent(repository -> {
+            response.setGithubRepositoryOwner(repository.getRepositoryOwner());
+            response.setGithubRepositoryName(repository.getRepositoryName());
+        });
         response.setCreatedByName(userRepository.findById(project.getCreatedBy()).map(User::getName).orElse(null));
         if (project.getProfilePictureKey() != null && bucketName != null && !bucketName.isBlank()) {
             GetObjectRequest getRequest = GetObjectRequest.builder().bucket(bucketName)
