@@ -16,6 +16,7 @@ import com.frietsync.backend.repository.workspace.WorkspaceRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
 import com.frietsync.backend.repository.invite.InviteRepository;
 import com.frietsync.backend.service.workspace.WorkspaceService;
+import com.frietsync.backend.service.impl.user.ProfilePictureUrlService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +34,7 @@ public class WorkspaceServiceImpl implements WorkspaceService {
     private final WorkspaceRepository workspaceRepository;
     private final ProjectRepository projectRepository;
     private final InviteRepository inviteRepository;
+    private final ProfilePictureUrlService profilePictureUrlService;
 
     @Override
     @Transactional
@@ -219,6 +221,7 @@ public class WorkspaceServiceImpl implements WorkspaceService {
         response.setName(user.getName());
         response.setEmail(user.getEmail());
         response.setRole(user.getRole());
+        response.setProfilePictureUrl(profilePictureUrlService.getUrl(user));
         return response;
     }
 

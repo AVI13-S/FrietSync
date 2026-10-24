@@ -40,6 +40,7 @@ import com.frietsync.backend.service.project.ProjectService;
 import com.frietsync.backend.service.invite.InviteService;
 import com.frietsync.backend.service.project.ReleaseService;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
+import com.frietsync.backend.service.impl.user.ProfilePictureUrlService;
 import com.frietsync.backend.service.issue.IssueService;
 import com.frietsync.backend.service.impl.issue.IssueHistoryRecorder;
 import lombok.RequiredArgsConstructor;
@@ -88,6 +89,7 @@ public class ProjectServiceImpl implements ProjectService {
     private final IssueService issueService;
     private final ReleaseService releaseService;
     private final ProjectAccess projectAccess;
+    private final ProfilePictureUrlService profilePictureUrlService;
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
     private final com.frietsync.backend.service.impl.issue.S3ObjectCleanupService cleanupService;
@@ -395,6 +397,7 @@ public class ProjectServiceImpl implements ProjectService {
         response.setName(user.getName());
         response.setEmail(user.getEmail());
         response.setRole(role);
+        response.setProfilePictureUrl(profilePictureUrlService.getUrl(user));
         return response;
     }
 

@@ -17,6 +17,7 @@ import com.frietsync.backend.repository.integration.GitHubConnectionRepository;
 import com.frietsync.backend.service.impl.issue.S3ObjectCleanupService;
 import com.frietsync.backend.service.impl.storage.S3UploadValidator;
 import com.frietsync.backend.service.user.UserService;
+import com.frietsync.backend.service.impl.user.ProfilePictureUrlService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -27,15 +28,11 @@ import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
-import software.amazon.awssdk.services.s3.presigner.S3Presigner;
-import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 import java.io.IOException;
 import java.net.URI;
-import java.time.Duration;
 import java.util.UUID;
 
 @Service
@@ -47,7 +44,7 @@ public class UserServiceImpl implements UserService {
     private final GoogleConnectionRepository googleConnectionRepository;
     private final GitHubConnectionRepository gitHubConnectionRepository;
     private final S3Client s3Client;
-    private final S3Presigner s3Presigner;
+    private final ProfilePictureUrlService profilePictureUrlService;
     private final S3ObjectCleanupService cleanupService;
     private final AccountCleanupRepository accountCleanupRepository;
     private final IssueAttachmentRepository issueAttachmentRepository;
@@ -246,18 +243,7 @@ public class UserServiceImpl implements UserService {
     }
 
     private ProfileResponse toProfile(User user) {
-        String pictureUrl = null;
-        if (user.getProfilePictureKey() != null && bucketName != null && !bucketName.isBlank()) {
-            GetObjectRequest getRequest = GetObjectRequest.builder()
-                    .bucket(bucketName)
-                    .key(user.getProfilePictureKey())
-                    .build();
-            GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
-                    .signatureDuration(Duration.ofHours(1))
-                    .getObjectRequest(getRequest)
-                    .build();
-            pictureUrl = s3Presigner.presignGetObject(presignRequest).url().toString();
-        }
+        String pictureUrl = profilePictureUrlService.getUrl(user);
         return new ProfileResponse(user.getId(), user.getWorkspaceId(), user.getName(), user.getEmail(),
                 user.getBio(), user.getJobTitle(), user.getRole(), user.getGithubUrl(), user.getLinkedinUrl(),
                 user.getPortfolioUrl(), pictureUrl,
