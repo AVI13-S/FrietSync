@@ -10,7 +10,7 @@ public interface ChatService {
 
     ChatMessageResponse sendMessage(UUID projectId, UUID senderId, ChatMessageRequest request);
 
-    List<ChatMessageResponse> getRecentMessages(UUID projectId, UUID userId, int limit);
+    List<ChatMessageResponse> getRecentMessages(UUID projectId, UUID userId, int page, int size);
 
     void assertProjectAccess(UUID projectId, UUID userId);
 }

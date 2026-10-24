@@ -37,11 +37,15 @@ public class ChatController {
     public List<ChatMessageResponse> recentMessages(
             @PathVariable UUID projectId,
             @AuthenticationPrincipal UUID userId,
-            @RequestParam(defaultValue = "50") int limit) {
-        if (limit < 1 || limit > 100) {
-            throw new BadRequestException("Message limit must be between 1 and 100");
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        if (page < 0) {
+            throw new BadRequestException("Message page cannot be negative");
         }
-        return chatService.getRecentMessages(projectId, userId, limit);
+        if (size < 1 || size > 100) {
+            throw new BadRequestException("Message page size must be between 1 and 100");
+        }
+        return chatService.getRecentMessages(projectId, userId, page, size);
     }
 
     @PostMapping(value = "/attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

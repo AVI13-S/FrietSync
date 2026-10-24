@@ -129,11 +129,11 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<ChatMessageResponse> getRecentMessages(UUID projectId, UUID userId, int limit) {
+    public List<ChatMessageResponse> getRecentMessages(UUID projectId, UUID userId, int page, int size) {
         assertProjectAccess(projectId, userId);
         List<ChatMessage> messages = new ArrayList<>(chatMessageRepository.findByProjectId(
                 projectId,
-                PageRequest.of(0, limit, Sort.by(
+                PageRequest.of(page, size, Sort.by(
                         Sort.Order.desc("createdAt"),
                         Sort.Order.desc("id")
                 ))
