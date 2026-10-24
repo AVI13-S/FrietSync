@@ -10,6 +10,7 @@ import com.frietsync.backend.entity.poll.PollOption;
 import com.frietsync.backend.entity.poll.PollStatus;
 import com.frietsync.backend.entity.poll.PollVote;
 import com.frietsync.backend.entity.project.Project;
+import com.frietsync.backend.entity.notification.NotificationType;
 import com.frietsync.backend.entity.project.Milestone;
 import com.frietsync.backend.entity.issue.Issue;
 import com.frietsync.backend.entity.sprint.Sprint;
@@ -25,6 +26,7 @@ import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
 import com.frietsync.backend.repository.sprint.SprintRepository;
 import com.frietsync.backend.service.poll.PollService;
+import com.frietsync.backend.service.notification.NotificationPublisher;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -59,6 +61,7 @@ public class PollServiceImpl implements PollService {
     private final ProjectAccess projectAccess;
     private final PollExpirationScheduler expirationScheduler;
     private final TransactionTemplate transactionTemplate;
+    private final NotificationPublisher notificationPublisher;
 
     @Override
     @Transactional
@@ -128,6 +131,15 @@ public class PollServiceImpl implements PollService {
             options.add(optionRepository.save(option));
         }
         PollResponse result = response(poll, userId);
+        Set<UUID> recipients = new HashSet<>();
+        if (project.getAdminId() != null) recipients.add(project.getAdminId());
+        if (project.getProjectManagerId() != null) recipients.add(project.getProjectManagerId());
+        if (project.getTeamLeadId() != null) recipients.add(project.getTeamLeadId());
+        memberRepository.findByProjectId(projectId).stream()
+                .map(com.frietsync.backend.entity.project.ProjectMember::getUserId).forEach(recipients::add);
+        String pollQuestion = poll.getQuestion();
+        recipients.forEach(recipient -> notificationPublisher.publish(recipient, NotificationType.POLL_CREATED,
+                "New project poll", "A new poll was created: " + pollQuestion, projectId, null, userId));
         publishAfterCommit("POLL_CREATED", result);
         if (endsAt != null) {
             Instant pollEndsAt = endsAt;

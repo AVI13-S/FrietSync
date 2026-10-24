@@ -8,6 +8,7 @@ import com.frietsync.backend.dto.project.ProjectResponse;
 import com.frietsync.backend.entity.project.Project;
 import com.frietsync.backend.entity.project.ProjectMember;
 import com.frietsync.backend.entity.project.ProjectStatus;
+import com.frietsync.backend.entity.notification.NotificationType;
 import com.frietsync.backend.entity.issue.AssignmentRequestStatus;
 import com.frietsync.backend.entity.issue.IssueAssignee;
 import com.frietsync.backend.entity.issue.Issue;
@@ -43,6 +44,7 @@ import com.frietsync.backend.service.project.ReleaseService;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
 import com.frietsync.backend.service.impl.user.ProfilePictureUrlService;
 import com.frietsync.backend.service.issue.IssueService;
+import com.frietsync.backend.service.notification.NotificationPublisher;
 import com.frietsync.backend.service.impl.issue.IssueHistoryRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -91,6 +93,7 @@ public class ProjectServiceImpl implements ProjectService {
     private final IssueService issueService;
     private final ReleaseService releaseService;
     private final ProjectAccess projectAccess;
+    private final NotificationPublisher notificationPublisher;
     private final ProfilePictureUrlService profilePictureUrlService;
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
@@ -124,6 +127,8 @@ public class ProjectServiceImpl implements ProjectService {
         project.setAdminId(workspace.getAdminId());
         apply(project, request, userId, workspace.getId());
         Project saved = projectRepository.save(project);
+        notifyProjectRole(saved.getProjectManagerId(), saved.getProjectManagerId(), saved, "project manager", userId);
+        notifyProjectRole(saved.getTeamLeadId(), saved.getTeamLeadId(), saved, "team lead", userId);
         return toResponse(saved);
     }
 
@@ -173,13 +178,22 @@ public class ProjectServiceImpl implements ProjectService {
         if (!canEdit) {
             throw new ForbiddenException("Only the admin or project manager can edit this project");
         }
+        UUID previousManagerId = project.getProjectManagerId();
+        UUID previousTeamLeadId = project.getTeamLeadId();
         apply(project, request, userId, project.getWorkspaceId());
         if (profilePicture != null && !profilePicture.isEmpty()) {
             String previousKey = project.getProfilePictureKey();
             project.setProfilePictureKey(uploadProfilePicture(projectId, profilePicture));
             enqueueStoredFileDeletion(previousKey);
         }
-        return toResponse(projectRepository.save(project));
+        Project saved = projectRepository.save(project);
+        if (!Objects.equals(previousManagerId, saved.getProjectManagerId())) {
+            notifyProjectRole(previousManagerId, saved.getProjectManagerId(), saved, "project manager", userId);
+        }
+        if (!Objects.equals(previousTeamLeadId, saved.getTeamLeadId())) {
+            notifyProjectRole(previousTeamLeadId, saved.getTeamLeadId(), saved, "team lead", userId);
+        }
+        return toResponse(saved);
     }
 
     @Override
@@ -253,6 +267,20 @@ public class ProjectServiceImpl implements ProjectService {
                 .map(user -> ProjectResponse.UserSummary.builder()
                         .id(user.getId()).name(user.getName()).role(user.getRole().name()).build())
                 .orElse(null);
+    }
+
+    private void notifyProjectRole(UUID previousUserId, UUID assignedUserId, Project project,
+                                   String roleName, UUID actorId) {
+        Set<UUID> recipients = new LinkedHashSet<>();
+        if (previousUserId != null) recipients.add(previousUserId);
+        if (assignedUserId != null) recipients.add(assignedUserId);
+        for (UUID recipient : recipients) {
+            String message = recipient.equals(assignedUserId)
+                    ? "You are now the " + roleName + " for project " + project.getName() + "."
+                    : "Your " + roleName + " role was removed from project " + project.getName() + ".";
+            notificationPublisher.publish(recipient, NotificationType.PROJECT_ROLE_CHANGED,
+                    "Project role changed", message, project.getId(), null, actorId);
+        }
     }
 
     @Override

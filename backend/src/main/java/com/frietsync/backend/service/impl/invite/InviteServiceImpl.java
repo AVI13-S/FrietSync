@@ -396,6 +396,15 @@ public class InviteServiceImpl implements InviteService {
                         .forEach(member -> projectUsers.add(member.getUserId()));
                 project.setTeamSize(projectUsers.size());
                 projectRepository.save(project);
+                NotificationType projectNotification = invite.getRole() == Role.PROJECT_MANAGER
+                        || invite.getRole() == Role.TEAM_LEAD
+                        ? NotificationType.PROJECT_ROLE_CHANGED : NotificationType.PROJECT_MEMBER_ADDED;
+                notificationPublisher.publish(userId, projectNotification,
+                        projectNotification == NotificationType.PROJECT_ROLE_CHANGED
+                                ? "Project role assigned" : "Added to project",
+                        "You joined project " + project.getName() + " as "
+                                + invite.getRole().name().replace('_', ' ').toLowerCase() + ".",
+                        project.getId(), null, invite.getInvitedBy());
             }
 
             case WORKSPACE_INVITE -> {
@@ -437,7 +446,16 @@ public class InviteServiceImpl implements InviteService {
 
                 workspace.setAdminId(userId);
                 workspaceRepository.save(workspace);
+                List<Project> workspaceProjects = projectRepository.findByWorkspaceId(invite.getWorkspaceId());
                 projectRepository.updateAdminIdByWorkspaceId(invite.getWorkspaceId(), userId);
+                for (Project project : workspaceProjects) {
+                    notificationPublisher.publish(currentOwner.getId(), NotificationType.PROJECT_ROLE_CHANGED,
+                            "Project role changed", "You are no longer the admin of project "
+                                    + project.getName() + ".", project.getId(), null, userId);
+                    notificationPublisher.publish(userId, NotificationType.PROJECT_ROLE_CHANGED,
+                            "Project role changed", "You are now the admin of project "
+                                    + project.getName() + ".", project.getId(), null, currentOwner.getId());
+                }
                 currentOwner.setRole(Role.CONTRIBUTOR);
                 userRepository.save(currentOwner);
                 user.setRole(Role.ADMIN);

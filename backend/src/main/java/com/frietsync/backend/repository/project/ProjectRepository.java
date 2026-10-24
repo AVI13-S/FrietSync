@@ -26,6 +26,8 @@ public interface ProjectRepository extends JpaRepository<Project, UUID> {
             + "order by p.createdAt desc")
     List<Project> findAllForUser(@Param("userId") UUID userId);
 
+    List<Project> findByWorkspaceId(UUID workspaceId);
+
     boolean existsByWorkspaceIdAndStatusNotIn(UUID workspaceId, Collection<ProjectStatus> statuses);
 
     @Modifying

@@ -8,6 +8,7 @@ import com.frietsync.backend.dto.chat.ChatAttachmentResponse;
 import com.frietsync.backend.dto.chat.EditChatMessageRequest;
 import com.frietsync.backend.entity.chat.ChatAttachment;
 import com.frietsync.backend.entity.chat.ChatMessage;
+import com.frietsync.backend.entity.notification.NotificationType;
 import com.frietsync.backend.entity.project.Project;
 import com.frietsync.backend.entity.user.User;
 import com.frietsync.backend.exception.BadRequestException;
@@ -129,8 +130,8 @@ public class ChatServiceImpl implements ChatService {
         String mentionMessage = sender.getName() + " mentioned you in " + project.getName() + ".";
         for (UUID mentionedId : mentionedIds) {
             if (!mentionedId.equals(senderId)) {
-                notificationPublisher.publishChatMessage(
-                        mentionedId, mentionTitle, mentionMessage, projectId, senderId);
+                notificationPublisher.publish(mentionedId, NotificationType.MENTION,
+                        mentionTitle, mentionMessage, projectId, null, senderId);
             }
         }
 
@@ -169,8 +170,8 @@ public class ChatServiceImpl implements ChatService {
         String mentionMessage = senderName + " mentioned you in " + project.getName() + ".";
         for (UUID mentionedId : mentionedIds) {
             if (!mentionedId.equals(userId) && !previousMentions.contains(mentionedId)) {
-                notificationPublisher.publishChatMessage(
-                        mentionedId, mentionTitle, mentionMessage, projectId, userId);
+                notificationPublisher.publish(mentionedId, NotificationType.MENTION,
+                        mentionTitle, mentionMessage, projectId, null, userId);
             }
         }
 

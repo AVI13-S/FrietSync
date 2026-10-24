@@ -16,6 +16,7 @@ import com.frietsync.backend.entity.issue.IssueHistory;
 import com.frietsync.backend.entity.issue.IssueLabel;
 import com.frietsync.backend.entity.issue.IssuePriority;
 import com.frietsync.backend.entity.issue.IssueStatus;
+import com.frietsync.backend.entity.notification.NotificationType;
 import com.frietsync.backend.entity.project.Label;
 import com.frietsync.backend.entity.project.Project;
 import com.frietsync.backend.entity.user.Role;
@@ -35,6 +36,7 @@ import com.frietsync.backend.service.impl.project.ProjectAccess;
 import com.frietsync.backend.service.issue.IssueAttachmentService;
 import com.frietsync.backend.service.issue.IssueService;
 import com.frietsync.backend.service.integration.GitHubIssueLinkService;
+import com.frietsync.backend.service.notification.NotificationPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -71,6 +73,7 @@ public class IssueServiceImpl implements IssueService {
     private final IssueLinkRepository issueLinkRepository;
     private final ReleaseIssueRepository releaseIssueRepository;
     private final GitHubIssueLinkService githubIssueLinkService;
+    private final NotificationPublisher notificationPublisher;
 
     @Override
     public IssueResponse create(UUID projectId, IssueRequest r, UUID userId) {
@@ -261,6 +264,9 @@ public class IssueServiceImpl implements IssueService {
         issueRepository.save(issue);
 
         history.record(issueId, userId, IssueHistoryAction.RESOLVED, "status", old, issue.getStatus());
+        notifyIssuePeople(issue, project, NotificationType.ISSUE_RESOLVED,
+                "Issue resolved", "Issue #" + issue.getIssueNumber() + ": " + issue.getTitle()
+                        + " was resolved.", userId);
         return mapper.toResponse(issue);
     }
 
@@ -299,7 +305,25 @@ public class IssueServiceImpl implements IssueService {
                 approve ? IssueHistoryAction.REVIEW_APPROVED : IssueHistoryAction.REVIEW_REJECTED,
                 "status", old, issue.getStatus(),
                 request == null ? null : request.getComment());
+        notifyIssuePeople(issue, project,
+                approve ? NotificationType.ISSUE_REVIEW_APPROVED : NotificationType.ISSUE_REVIEW_REJECTED,
+                approve ? "Issue review approved" : "Issue review rejected",
+                "Review of issue #" + issue.getIssueNumber() + ": " + issue.getTitle()
+                        + (approve ? " was approved." : " was rejected and the issue reopened."), userId);
         return mapper.toResponse(issue);
+    }
+
+    private void notifyIssuePeople(Issue issue, Project project, NotificationType type,
+                                   String title, String message, UUID actorId) {
+        java.util.Set<UUID> recipients = new java.util.LinkedHashSet<>();
+        if (issue.getCreatedBy() != null) recipients.add(issue.getCreatedBy());
+        assigneeRepository.findByIssueId(issue.getId()).stream()
+                .map(com.frietsync.backend.entity.issue.IssueAssignee::getUserId).forEach(recipients::add);
+        if (project.getAdminId() != null) recipients.add(project.getAdminId());
+        if (project.getProjectManagerId() != null) recipients.add(project.getProjectManagerId());
+        if (project.getTeamLeadId() != null) recipients.add(project.getTeamLeadId());
+        recipients.forEach(recipient -> notificationPublisher.publish(recipient, type, title, message,
+                project.getId(), issue.getId(), actorId));
     }
 
     @Override

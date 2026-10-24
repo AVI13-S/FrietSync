@@ -11,6 +11,7 @@ import com.frietsync.backend.entity.sprint.SprintAssignmentRequest;
 import com.frietsync.backend.entity.sprint.SprintAssignmentRequestStatus;
 import com.frietsync.backend.entity.sprint.SprintStatus;
 import com.frietsync.backend.entity.project.ProjectMember;
+import com.frietsync.backend.entity.notification.NotificationType;
 import com.frietsync.backend.entity.user.Role;
 import com.frietsync.backend.entity.user.User;
 import com.frietsync.backend.exception.BadRequestException;
@@ -24,6 +25,7 @@ import com.frietsync.backend.repository.sprint.SprintRepository;
 import com.frietsync.backend.repository.sprint.SprintCommentRepository;
 import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.service.sprint.SprintService;
+import com.frietsync.backend.service.notification.NotificationPublisher;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -46,6 +48,7 @@ public class SprintServiceImpl implements SprintService {
     private final SprintAssignmentRequestRepository assignmentRequestRepository;
     private final SprintCommentRepository sprintCommentRepository;
     private final ProjectAccess projectAccess;
+    private final NotificationPublisher notificationPublisher;
 
     @Override
     @Transactional
@@ -172,6 +175,9 @@ public class SprintServiceImpl implements SprintService {
         sprint.setAssignedContributorId(contributorId);
         Sprint updatedSprint = sprintRepository.save(sprint);
         rejectRequests(sprint, currentUserId, null);
+        notificationPublisher.publish(contributorId, NotificationType.SPRINT_ASSIGNED,
+                "Sprint assigned to you", "You were assigned to sprint " + sprint.getName() + ".",
+                sprint.getProjectId(), null, currentUserId);
         return toResponse(updatedSprint);
     }
 
@@ -193,6 +199,13 @@ public class SprintServiceImpl implements SprintService {
         request.setSprintId(sprintId);
         request.setRequestedBy(currentUserId);
         SprintAssignmentRequest savedRequest = assignmentRequestRepository.save(request);
+        Project project = findProjectForWrite(sprint.getProjectId());
+        if (project.getProjectManagerId() != null) {
+            notificationPublisher.publish(project.getProjectManagerId(),
+                    NotificationType.SPRINT_ASSIGNMENT_REQUESTED,
+                    "Sprint assignment requested", "A contributor requested sprint " + sprint.getName() + ".",
+                    project.getId(), null, currentUserId);
+        }
         return toAssignmentRequestResponse(savedRequest);
     }
 
@@ -232,6 +245,9 @@ public class SprintServiceImpl implements SprintService {
 
         sprint.setAssignedContributorId(request.getRequestedBy());
         sprintRepository.save(sprint);
+        notificationPublisher.publish(request.getRequestedBy(), NotificationType.SPRINT_ASSIGNED,
+                "Sprint request approved", "Your request to join sprint " + sprint.getName() + " was approved.",
+                sprint.getProjectId(), null, currentUserId);
         request.setStatus(SprintAssignmentRequestStatus.APPROVED);
         request.setReviewedBy(currentUserId);
         SprintAssignmentRequest approvedRequest = assignmentRequestRepository.save(request);

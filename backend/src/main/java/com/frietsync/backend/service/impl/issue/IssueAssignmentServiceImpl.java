@@ -11,7 +11,9 @@ import com.frietsync.backend.entity.issue.IssueAssignee;
 import com.frietsync.backend.entity.issue.IssueAssignmentRequest;
 import com.frietsync.backend.entity.issue.IssueHistoryAction;
 import com.frietsync.backend.entity.issue.IssueStatus;
+import com.frietsync.backend.entity.notification.NotificationType;
 import com.frietsync.backend.entity.project.Project;
+import com.frietsync.backend.entity.project.ProjectMember;
 import com.frietsync.backend.entity.user.Role;
 import com.frietsync.backend.entity.user.User;
 import com.frietsync.backend.exception.BadRequestException;
@@ -20,9 +22,11 @@ import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.repository.issue.IssueAssigneeRepository;
 import com.frietsync.backend.repository.issue.IssueAssignmentRequestRepository;
 import com.frietsync.backend.repository.issue.IssueRepository;
+import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
 import com.frietsync.backend.service.issue.IssueAssignmentService;
+import com.frietsync.backend.service.notification.NotificationPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,10 +48,12 @@ public class IssueAssignmentServiceImpl implements IssueAssignmentService {
     private final IssueRepository issueRepository;
     private final IssueAssigneeRepository assigneeRepository;
     private final IssueAssignmentRequestRepository requestRepository;
+    private final ProjectMemberRepository memberRepository;
     private final UserRepository userRepository;
     private final ProjectAccess access;
     private final IssueMapper mapper;
     private final IssueHistoryRecorder history;
+    private final NotificationPublisher notificationPublisher;
 
     @Override
     public IssueResponse assign(UUID issueId, AssignIssueRequest r, UUID userId) {
@@ -75,6 +81,9 @@ public class IssueAssignmentServiceImpl implements IssueAssignmentService {
         for (UUID uid : target) {
             if (!current.contains(uid)) {
                 addAssignee(issueId, uid, userId);
+                notificationPublisher.publish(uid, NotificationType.ISSUE_ASSIGNED,
+                        "Issue assigned to you", "You were assigned to issue #" + issue.getIssueNumber()
+                                + ": " + issue.getTitle(), project.getId(), issueId, userId);
             }
         }
 
@@ -125,6 +134,9 @@ public class IssueAssignmentServiceImpl implements IssueAssignmentService {
         requestRepository.save(req);
 
         history.record(issueId, userId, IssueHistoryAction.ASSIGNMENT_REQUESTED);
+        notifyProjectLeads(project, NotificationType.ISSUE_ASSIGNMENT_REQUESTED,
+                "Issue assignment requested", "A contributor requested issue #" + issue.getIssueNumber()
+                        + ": " + issue.getTitle(), issueId, userId);
         return toResponse(req);
     }
 
@@ -183,6 +195,9 @@ public class IssueAssignmentServiceImpl implements IssueAssignmentService {
             }
             if (!assigneeRepository.existsByIssueIdAndUserId(issueId, req.getUserId())) {
                 addAssignee(issueId, req.getUserId(), userId);
+                notificationPublisher.publish(req.getUserId(), NotificationType.ISSUE_ASSIGNED,
+                        "Issue assigned to you", "You were assigned to issue #" + issue.getIssueNumber()
+                                + ": " + issue.getTitle(), project.getId(), issueId, userId);
             }
             IssueStatus oldStatus = issue.getStatus();
             startWork(issue);
@@ -240,6 +255,30 @@ public class IssueAssignmentServiceImpl implements IssueAssignmentService {
         history.record(req.getIssueId(), deciderId,
                 approve ? IssueHistoryAction.ASSIGNMENT_APPROVED : IssueHistoryAction.ASSIGNMENT_REJECTED,
                 "assignee", null, req.getUserId());
+        Issue issue = issueRepository.findById(req.getIssueId()).orElse(null);
+        String issueLabel = issue == null ? "this issue"
+                : "issue #" + issue.getIssueNumber() + ": " + issue.getTitle();
+        notificationPublisher.publish(req.getUserId(), approve
+                        ? NotificationType.ISSUE_REQUEST_APPROVED : NotificationType.ISSUE_REQUEST_REJECTED,
+                approve ? "Issue request approved" : "Issue request rejected",
+                "Your request for " + issueLabel + " was " + (approve ? "approved" : "rejected") + ".",
+                req.getProjectId(), req.getIssueId(), deciderId);
+    }
+
+    private void notifyProjectLeads(Project project, NotificationType type, String title,
+                                    String message, UUID issueId, UUID actorId) {
+        Set<UUID> recipients = new LinkedHashSet<>();
+        if (project.getAdminId() != null) recipients.add(project.getAdminId());
+        if (project.getProjectManagerId() != null) recipients.add(project.getProjectManagerId());
+        if (project.getTeamLeadId() != null) recipients.add(project.getTeamLeadId());
+        for (ProjectMember member : memberRepository.findByProjectId(project.getId())) {
+            if (member.getRole() == Role.ADMIN || member.getRole() == Role.PROJECT_MANAGER
+                    || member.getRole() == Role.TEAM_LEAD) {
+                recipients.add(member.getUserId());
+            }
+        }
+        recipients.forEach(recipient -> notificationPublisher.publish(recipient, type, title, message,
+                project.getId(), issueId, actorId));
     }
 
     private AssignmentRequestResponse toResponse(IssueAssignmentRequest req) {
