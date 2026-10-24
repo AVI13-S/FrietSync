@@ -2,6 +2,7 @@ package com.frietsync.backend.repository.chat;
 
 import com.frietsync.backend.entity.chat.ChatMessage;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Page;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -16,6 +17,29 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, UUID> 
             UUID projectId,
             Pageable pageable
     );
+
+    @Query("select m from ChatMessage m where m.projectId = :projectId and m.deleted = false "
+            + "and lower(m.content) like lower(concat('%', :query, '%'))")
+    Page<ChatMessage> searchMessages(
+            @Param("projectId") UUID projectId,
+            @Param("query") String query,
+            Pageable pageable);
+
+    @Query("select m from ChatMessage m where m.projectId = :projectId and m.createdAt < :createdAt "
+            + "or (m.projectId = :projectId and m.createdAt = :createdAt and m.id < :messageId)")
+    List<ChatMessage> findOlderMessages(
+            @Param("projectId") UUID projectId,
+            @Param("createdAt") java.time.Instant createdAt,
+            @Param("messageId") UUID messageId,
+            Pageable pageable);
+
+    @Query("select m from ChatMessage m where m.projectId = :projectId and m.createdAt > :createdAt "
+            + "or (m.projectId = :projectId and m.createdAt = :createdAt and m.id > :messageId)")
+    List<ChatMessage> findNewerMessages(
+            @Param("projectId") UUID projectId,
+            @Param("createdAt") java.time.Instant createdAt,
+            @Param("messageId") UUID messageId,
+            Pageable pageable);
 
 
     @Modifying

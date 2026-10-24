@@ -2,6 +2,8 @@ package com.frietsync.backend.service.impl.chat;
 
 import com.frietsync.backend.dto.chat.ChatMessageRequest;
 import com.frietsync.backend.dto.chat.ChatMessageResponse;
+import com.frietsync.backend.dto.chat.ChatMessagePageResponse;
+import com.frietsync.backend.dto.chat.ChatMessageWindowResponse;
 import com.frietsync.backend.dto.chat.ChatAttachmentResponse;
 import com.frietsync.backend.entity.chat.ChatAttachment;
 import com.frietsync.backend.entity.chat.ChatMessage;
@@ -20,6 +22,7 @@ import com.frietsync.backend.service.chat.ChatService;
 import com.frietsync.backend.service.notification.NotificationPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -139,6 +142,45 @@ public class ChatServiceImpl implements ChatService {
                 ))
         ));
         Collections.reverse(messages);
+        return toResponses(messages);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ChatMessagePageResponse searchMessages(UUID projectId, UUID userId, String query, int page, int size) {
+        assertProjectAccess(projectId, userId);
+        Page<ChatMessage> result = chatMessageRepository.searchMessages(
+                projectId, query.trim(), PageRequest.of(page, size, Sort.by(
+                        Sort.Order.desc("createdAt"), Sort.Order.desc("id"))));
+        return new ChatMessagePageResponse(
+                toResponses(result.getContent()), page, size, result.getTotalElements(),
+                result.getTotalPages(), result.hasNext());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ChatMessageWindowResponse getMessagesAround(
+            UUID projectId, UUID userId, UUID messageId, int before, int after) {
+        assertProjectAccess(projectId, userId);
+        ChatMessage target = chatMessageRepository.findById(messageId)
+                .filter(message -> projectId.equals(message.getProjectId()))
+                .orElseThrow(() -> new ResourceNotFoundException("Chat message not found"));
+        List<ChatMessage> older = before == 0 ? new ArrayList<>() : new ArrayList<>(
+                chatMessageRepository.findOlderMessages(projectId, target.getCreatedAt(), target.getId(),
+                        PageRequest.of(0, before,
+                                Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")))));
+        Collections.reverse(older);
+        List<ChatMessage> window = new ArrayList<>(older);
+        window.add(target);
+        if (after > 0) {
+            window.addAll(chatMessageRepository.findNewerMessages(
+                    projectId, target.getCreatedAt(), target.getId(), PageRequest.of(0, after,
+                            Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id")))));
+        }
+        return new ChatMessageWindowResponse(messageId, toResponses(window));
+    }
+
+    private List<ChatMessageResponse> toResponses(List<ChatMessage> messages) {
         List<UUID> messageIds = messages.stream().map(ChatMessage::getId).toList();
         List<ChatAttachment> attachments = messageIds.isEmpty()
                 ? List.of()

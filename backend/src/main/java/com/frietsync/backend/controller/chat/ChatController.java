@@ -1,6 +1,8 @@
 package com.frietsync.backend.controller.chat;
 
 import com.frietsync.backend.dto.chat.ChatMessageResponse;
+import com.frietsync.backend.dto.chat.ChatMessagePageResponse;
+import com.frietsync.backend.dto.chat.ChatMessageWindowResponse;
 import com.frietsync.backend.dto.chat.ChatAttachmentResponse;
 import com.frietsync.backend.dto.chat.ChatAttachmentPageResponse;
 import com.frietsync.backend.exception.BadRequestException;
@@ -46,6 +48,38 @@ public class ChatController {
             throw new BadRequestException("Message page size must be between 1 and 100");
         }
         return chatService.getRecentMessages(projectId, userId, page, size);
+    }
+
+    @GetMapping("/messages/search")
+    public ResponseEntity<ChatMessagePageResponse> searchMessages(
+            @PathVariable UUID projectId,
+            @AuthenticationPrincipal UUID userId,
+            @RequestParam String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        if (q.isBlank() || q.length() > 200) {
+            throw new BadRequestException("Search query must contain 1 to 200 characters");
+        }
+        if (page < 0) {
+            throw new BadRequestException("Message page cannot be negative");
+        }
+        if (size < 1 || size > 100) {
+            throw new BadRequestException("Message page size must be between 1 and 100");
+        }
+        return ResponseEntity.ok(chatService.searchMessages(projectId, userId, q, page, size));
+    }
+
+    @GetMapping("/messages/around/{messageId}")
+    public ResponseEntity<ChatMessageWindowResponse> messagesAround(
+            @PathVariable UUID projectId,
+            @PathVariable UUID messageId,
+            @AuthenticationPrincipal UUID userId,
+            @RequestParam(defaultValue = "25") int before,
+            @RequestParam(defaultValue = "25") int after) {
+        if (before < 0 || before > 50 || after < 0 || after > 50) {
+            throw new BadRequestException("Before and after must each be between 0 and 50");
+        }
+        return ResponseEntity.ok(chatService.getMessagesAround(projectId, userId, messageId, before, after));
     }
 
     @PostMapping(value = "/attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
