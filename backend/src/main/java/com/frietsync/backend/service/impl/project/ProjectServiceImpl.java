@@ -99,7 +99,7 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     @Transactional
-    public ProjectResponse create(ProjectRequest request, MultipartFile profilePicture, UUID userId) {
+    public ProjectResponse create(ProjectRequest request, UUID userId) {
         User admin = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         if (admin.getRole() != Role.ADMIN) {
@@ -122,10 +122,6 @@ public class ProjectServiceImpl implements ProjectService {
         project.setAdminId(workspace.getAdminId());
         apply(project, request, userId, workspace.getId());
         Project saved = projectRepository.save(project);
-        if (profilePicture != null && !profilePicture.isEmpty()) {
-            saved.setProfilePictureKey(uploadProfilePicture(saved.getId(), profilePicture));
-            saved = projectRepository.save(saved);
-        }
         return toResponse(saved);
     }
 
@@ -182,6 +178,45 @@ public class ProjectServiceImpl implements ProjectService {
             enqueueStoredFileDeletion(previousKey);
         }
         return toResponse(projectRepository.save(project));
+    }
+
+    @Override
+    @Transactional
+    public ProjectResponse uploadProfilePicture(UUID projectId, MultipartFile profilePicture, UUID userId) {
+        Project project = projectRepository.findByIdForUpdate(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
+        projectAccess.requireWorkspaceAndActive(project, userId);
+        requireProjectPictureEditor(project, userId);
+        if (profilePicture == null || profilePicture.isEmpty()) {
+            throw new BadRequestException("Project profile picture must not be empty");
+        }
+
+        String previousKey = project.getProfilePictureKey();
+        project.setProfilePictureKey(uploadProfilePicture(projectId, profilePicture));
+        Project saved = projectRepository.save(project);
+        enqueueStoredFileDeletion(previousKey);
+        return toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public ProjectResponse removeProfilePicture(UUID projectId, UUID userId) {
+        Project project = projectRepository.findByIdForUpdate(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
+        projectAccess.requireWorkspaceAndActive(project, userId);
+        requireProjectPictureEditor(project, userId);
+
+        String previousKey = project.getProfilePictureKey();
+        project.setProfilePictureKey(null);
+        Project saved = projectRepository.save(project);
+        enqueueStoredFileDeletion(previousKey);
+        return toResponse(saved);
+    }
+
+    private void requireProjectPictureEditor(Project project, UUID userId) {
+        if (!userId.equals(project.getAdminId()) && !userId.equals(project.getProjectManagerId())) {
+            throw new ForbiddenException("Only the admin or project manager can edit this project");
+        }
     }
 
     private ProjectResponse toResponse(Project project) {

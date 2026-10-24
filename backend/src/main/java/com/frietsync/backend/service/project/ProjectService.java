@@ -11,10 +11,12 @@ import java.util.UUID;
 import org.springframework.web.multipart.MultipartFile;
 
 public interface ProjectService {
-    ProjectResponse create(ProjectRequest request, MultipartFile profilePicture, UUID userId);
+    ProjectResponse create(ProjectRequest request, UUID userId);
     List<ProjectResponse> myProjects(UUID userId);
     ProjectResponse get(UUID projectId, UUID userId);
     ProjectResponse update(UUID projectId, ProjectRequest request, MultipartFile profilePicture, UUID userId);
+    ProjectResponse uploadProfilePicture(UUID projectId, MultipartFile profilePicture, UUID userId);
+    ProjectResponse removeProfilePicture(UUID projectId, UUID userId);
     void delete(UUID projectId, UUID userId);
     List<MemberResponse> getMembers(UUID projectId, UUID userId);
     InviteResponse inviteMember(UUID projectId, ProjectInviteRequest request, UUID userId);

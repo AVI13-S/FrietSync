@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -33,11 +34,10 @@ public class ProjectController {
 
     private final ProjectService projectService;
 
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ProjectResponse> create(@Valid @RequestPart("project") ProjectRequest request,
-                                                  @RequestPart(value = "profilePicture", required = false) MultipartFile profilePicture,
+    @PostMapping
+    public ResponseEntity<ProjectResponse> create(@Valid @RequestBody ProjectRequest request,
                                                   @AuthenticationPrincipal UUID userId) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(projectService.create(request, profilePicture, userId));
+        return ResponseEntity.status(HttpStatus.CREATED).body(projectService.create(request, userId));
     }
 
     @GetMapping("/me")
@@ -57,6 +57,20 @@ public class ProjectController {
                                                   @RequestPart(value = "profilePicture", required = false) MultipartFile profilePicture,
                                                   @AuthenticationPrincipal UUID userId) {
         return ResponseEntity.ok(projectService.update(projectId, request, profilePicture, userId));
+    }
+
+    @PostMapping(value = "/{projectId}/profile-picture", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ProjectResponse> uploadProfilePicture(@PathVariable UUID projectId,
+                                                                @RequestParam("file") MultipartFile file,
+                                                                @AuthenticationPrincipal UUID userId) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(projectService.uploadProfilePicture(projectId, file, userId));
+    }
+
+    @DeleteMapping("/{projectId}/profile-picture")
+    public ResponseEntity<ProjectResponse> removeProfilePicture(@PathVariable UUID projectId,
+                                                                @AuthenticationPrincipal UUID userId) {
+        return ResponseEntity.ok(projectService.removeProfilePicture(projectId, userId));
     }
 
     @DeleteMapping("/{projectId}")
