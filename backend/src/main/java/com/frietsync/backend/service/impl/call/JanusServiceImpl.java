@@ -43,6 +43,7 @@ public class JanusServiceImpl implements JanusService {
             room.put("description", "FrietSync voice room");
             room.put("sampling_rate", 16000);
             room.put("record", false);
+            room.put("audiolevel_event", true);
 
             if (hasText(janusConfig.roomSecret())) {
                 room.put("secret", janusConfig.roomSecret());
