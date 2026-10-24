@@ -5,14 +5,17 @@ import com.frietsync.backend.dto.chat.ChatMessageResponse;
 import com.frietsync.backend.dto.chat.ChatMessagePageResponse;
 import com.frietsync.backend.dto.chat.ChatMessageWindowResponse;
 import com.frietsync.backend.dto.chat.ChatAttachmentResponse;
+import com.frietsync.backend.dto.chat.EditChatMessageRequest;
 import com.frietsync.backend.entity.chat.ChatAttachment;
 import com.frietsync.backend.entity.chat.ChatMessage;
 import com.frietsync.backend.entity.project.Project;
 import com.frietsync.backend.entity.user.User;
 import com.frietsync.backend.exception.BadRequestException;
+import com.frietsync.backend.exception.ForbiddenException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.repository.chat.ChatMessageRepository;
 import com.frietsync.backend.repository.chat.ChatAttachmentRepository;
+import com.frietsync.backend.repository.chat.ChatMuteRepository;
 import com.frietsync.backend.service.chat.ChatAttachmentService;
 import com.frietsync.backend.service.chat.ChatAccessService;
 import com.frietsync.backend.repository.project.ProjectMemberRepository;
@@ -28,7 +31,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Collections;
 import java.util.List;
 import java.util.LinkedHashSet;
@@ -49,6 +54,7 @@ public class ChatServiceImpl implements ChatService {
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
     private final NotificationPublisher notificationPublisher;
+    private final ChatMuteRepository chatMuteRepository;
 
     @Override
     @Transactional
@@ -112,6 +118,7 @@ public class ChatServiceImpl implements ChatService {
                 .forEach(member -> recipients.add(member.getUserId()));
 
         recipients.removeAll(mentionedIds);
+        recipients.removeAll(chatMuteRepository.findActiveMutedUserIds(projectId, Instant.now()));
 
         String title = "New message in " + project.getName();
         String notificationMessage = sender.getName() + " sent a message in " + project.getName() + ".";
@@ -128,6 +135,93 @@ public class ChatServiceImpl implements ChatService {
         }
 
         return ChatMessageResponse.fromEntity(savedMessage, attachments);
+    }
+
+    @Override
+    @Transactional
+    public ChatMessageResponse editMessage(UUID projectId, UUID userId, UUID messageId,
+                                           EditChatMessageRequest request) {
+        assertProjectAccess(projectId, userId);
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
+        ChatMessage message = findActiveMessage(projectId, messageId);
+        if (!userId.equals(message.getSenderId())) {
+            throw new ForbiddenException("You can only edit your own messages");
+        }
+
+        List<ChatAttachment> attachments = chatAttachmentRepository.findByMessageIdOrderByCreatedAtAsc(messageId);
+        String content = request.getContent() == null ? "" : request.getContent().trim();
+        if (content.length() > MAX_MESSAGE_LENGTH || (content.isEmpty() && attachments.isEmpty())) {
+            throw new BadRequestException("Message must contain up to 2000 characters or include an attachment");
+        }
+
+        Set<UUID> mentionedIds = resolveMentions(project, request.getMentionedUserIds());
+        Set<UUID> previousMentions = new HashSet<>(message.getMentionedUserIds());
+
+        message.setContent(content);
+        message.getMentionedUserIds().clear();
+        message.getMentionedUserIds().addAll(mentionedIds);
+        message.setEditedAt(Instant.now());
+        ChatMessage saved = chatMessageRepository.save(message);
+
+        String senderName = saved.getSenderName();
+        String mentionTitle = "You were mentioned in " + project.getName();
+        String mentionMessage = senderName + " mentioned you in " + project.getName() + ".";
+        for (UUID mentionedId : mentionedIds) {
+            if (!mentionedId.equals(userId) && !previousMentions.contains(mentionedId)) {
+                notificationPublisher.publishChatMessage(
+                        mentionedId, mentionTitle, mentionMessage, projectId, userId);
+            }
+        }
+
+        return ChatMessageResponse.fromEntity(saved,
+                attachments.stream().map(ChatAttachmentResponse::fromEntity).toList());
+    }
+
+    @Override
+    @Transactional
+    public ChatMessageResponse deleteMessage(UUID projectId, UUID userId, UUID messageId) {
+        assertProjectAccess(projectId, userId);
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
+        ChatMessage message = findActiveMessage(projectId, messageId);
+
+        boolean isSender = userId.equals(message.getSenderId());
+        boolean isProjectLead = userId.equals(project.getCreatedBy())
+                || userId.equals(project.getAdminId())
+                || userId.equals(project.getProjectManagerId())
+                || userId.equals(project.getTeamLeadId());
+        if (!isSender && !isProjectLead) {
+            throw new ForbiddenException("You can't delete this message");
+        }
+
+        message.setDeleted(true);
+        message.setDeletedAt(Instant.now());
+        message.setDeletedBy(userId);
+        ChatMessage saved = chatMessageRepository.save(message);
+        return ChatMessageResponse.fromEntity(saved, List.of());
+    }
+
+    private ChatMessage findActiveMessage(UUID projectId, UUID messageId) {
+        return chatMessageRepository.findById(messageId)
+                .filter(m -> projectId.equals(m.getProjectId()) && !m.isDeleted())
+                .orElseThrow(() -> new ResourceNotFoundException("Message not found"));
+    }
+
+    private Set<UUID> resolveMentions(Project project, List<UUID> requested) {
+        Set<UUID> mentionedIds = new LinkedHashSet<>();
+        if (requested != null) {
+            for (UUID mentionedId : requested) {
+                if (mentionedId == null) {
+                    continue;
+                }
+                if (!chatAccessService.hasProjectAccess(project, mentionedId)) {
+                    throw new BadRequestException("Mentioned user is not a member of this project");
+                }
+                mentionedIds.add(mentionedId);
+            }
+        }
+        return mentionedIds;
     }
 
     @Override
@@ -186,10 +280,10 @@ public class ChatServiceImpl implements ChatService {
                 ? List.of()
                 : chatAttachmentRepository.findByMessageIdIn(messageIds);
         java.util.Map<UUID, List<ChatAttachmentResponse>> attachmentsByMessage = attachments.stream()
-                        .collect(java.util.stream.Collectors.groupingBy(
-                                ChatAttachment::getMessageId,
-                                java.util.stream.Collectors.mapping(ChatAttachmentResponse::fromEntity,
-                                        java.util.stream.Collectors.toList())));
+                .collect(java.util.stream.Collectors.groupingBy(
+                        ChatAttachment::getMessageId,
+                        java.util.stream.Collectors.mapping(ChatAttachmentResponse::fromEntity,
+                                java.util.stream.Collectors.toList())));
         return messages.stream().map(message -> ChatMessageResponse.fromEntity(
                 message, attachmentsByMessage.getOrDefault(message.getId(), List.of()))).toList();
     }

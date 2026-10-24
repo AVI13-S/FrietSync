@@ -1,6 +1,7 @@
 package com.frietsync.backend.service.chat;
 
 import com.frietsync.backend.dto.chat.ChatMessageRequest;
+import com.frietsync.backend.dto.chat.EditChatMessageRequest;
 import com.frietsync.backend.dto.chat.ChatMessageResponse;
 import com.frietsync.backend.dto.chat.ChatMessagePageResponse;
 import com.frietsync.backend.dto.chat.ChatMessageWindowResponse;
@@ -18,6 +19,10 @@ public interface ChatService {
 
     ChatMessageWindowResponse getMessagesAround(UUID projectId, UUID userId, UUID messageId,
                                                 int before, int after);
+
+    ChatMessageResponse editMessage(UUID projectId, UUID userId, UUID messageId, EditChatMessageRequest request);
+
+    ChatMessageResponse deleteMessage(UUID projectId, UUID userId, UUID messageId);
 
     void assertProjectAccess(UUID projectId, UUID userId);
 }
