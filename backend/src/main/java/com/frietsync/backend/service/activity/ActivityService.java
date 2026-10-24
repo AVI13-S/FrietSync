@@ -13,7 +13,7 @@ public interface ActivityService {
 
     List<PresenceResponse> presence(UUID projectId, UUID userId);
 
-    List<ActivityResponse> recentActivity(UUID projectId, UUID userId, int limit);
+    IssuePageResponse<ActivityResponse> recentActivity(UUID projectId, UUID userId, int page, int size);
 
     IssuePageResponse<ActivityResponse> events(UUID projectId, UUID userId, IssueHistoryAction action,
                                                int page, int size);

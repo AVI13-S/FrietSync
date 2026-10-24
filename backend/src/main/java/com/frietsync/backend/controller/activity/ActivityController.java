@@ -36,13 +36,18 @@ public class ActivityController {
     }
 
     @GetMapping("/projects/{projectId}/activity")
-    public ResponseEntity<List<ActivityResponse>> activity(@PathVariable UUID projectId,
-                                                           @RequestParam(defaultValue = "50") int limit,
-                                                           @AuthenticationPrincipal UUID userId) {
-        if (limit < 1 || limit > 100) {
-            throw new BadRequestException("Limit must be between 1 and 100");
+    public ResponseEntity<IssuePageResponse<ActivityResponse>> activity(
+            @PathVariable UUID projectId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @AuthenticationPrincipal UUID userId) {
+        if (page < 0) {
+            throw new BadRequestException("Page must not be negative");
         }
-        return ResponseEntity.ok(activityService.recentActivity(projectId, userId, limit));
+        if (size < 1 || size > 100) {
+            throw new BadRequestException("Size must be between 1 and 100");
+        }
+        return ResponseEntity.ok(activityService.recentActivity(projectId, userId, page, size));
     }
 
     @GetMapping("/projects/{projectId}/events")
