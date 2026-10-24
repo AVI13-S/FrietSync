@@ -118,6 +118,7 @@ public class PollServiceImpl implements PollService {
         poll.setMilestoneId(request.getMilestoneId());
         poll.setEndsAt(endsAt);
         poll = pollRepository.save(poll);
+        UUID pollId = poll.getId();
         List<PollOption> options = new ArrayList<>();
         for (int index = 0; index < request.getOptions().size(); index++) {
             PollOption option = new PollOption();
@@ -130,7 +131,7 @@ public class PollServiceImpl implements PollService {
         publishAfterCommit("POLL_CREATED", result);
         if (endsAt != null) {
             Instant pollEndsAt = endsAt;
-            afterCommit(() -> scheduleExpiration(poll.getId(), pollEndsAt));
+            afterCommit(() -> scheduleExpiration(pollId, pollEndsAt));
         }
         return result;
     }
