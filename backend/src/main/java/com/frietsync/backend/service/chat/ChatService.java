@@ -24,5 +24,11 @@ public interface ChatService {
 
     ChatMessageResponse deleteMessage(UUID projectId, UUID userId, UUID messageId);
 
+    ChatMessageResponse pinMessage(UUID projectId, UUID userId, UUID messageId);
+
+    ChatMessageResponse unpinMessage(UUID projectId, UUID userId, UUID messageId);
+
+    List<ChatMessageResponse> getPinnedMessages(UUID projectId, UUID userId);
+
     void assertProjectAccess(UUID projectId, UUID userId);
 }

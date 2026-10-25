@@ -46,6 +46,12 @@ public class ChatMessage extends BaseEntity {
     @Column(name = "deleted_by")
     private UUID deletedBy;
 
+    @Column(name = "pinned_at")
+    private Instant pinnedAt;
+
+    @Column(name = "pinned_by")
+    private UUID pinnedBy;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "reply_to_id")
     private ChatMessage replyTo;
