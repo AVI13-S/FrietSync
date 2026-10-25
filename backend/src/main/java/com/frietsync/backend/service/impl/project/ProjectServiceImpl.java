@@ -169,7 +169,7 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     @Transactional
-    public ProjectResponse update(UUID projectId, ProjectRequest request, MultipartFile profilePicture, UUID userId) {
+    public ProjectResponse update(UUID projectId, ProjectRequest request, UUID userId) {
         Project project = projectRepository.findByIdForUpdate(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
         projectAccess.requireWorkspaceAndActive(project, userId);
@@ -181,11 +181,6 @@ public class ProjectServiceImpl implements ProjectService {
         UUID previousManagerId = project.getProjectManagerId();
         UUID previousTeamLeadId = project.getTeamLeadId();
         apply(project, request, userId, project.getWorkspaceId());
-        if (profilePicture != null && !profilePicture.isEmpty()) {
-            String previousKey = project.getProfilePictureKey();
-            project.setProfilePictureKey(uploadProfilePicture(projectId, profilePicture));
-            enqueueStoredFileDeletion(previousKey);
-        }
         Project saved = projectRepository.save(project);
         if (!Objects.equals(previousManagerId, saved.getProjectManagerId())) {
             notifyProjectRole(previousManagerId, saved.getProjectManagerId(), saved, "project manager", userId);
@@ -265,7 +260,11 @@ public class ProjectServiceImpl implements ProjectService {
         if (userId == null) return null;
         return userRepository.findById(userId)
                 .map(user -> ProjectResponse.UserSummary.builder()
-                        .id(user.getId()).name(user.getName()).role(user.getRole().name()).build())
+                        .id(user.getId())
+                        .name(user.getName())
+                        .role(user.getRole().name())
+                        .profilePictureUrl(profilePictureUrlService.getUrl(user))
+                        .build())
                 .orElse(null);
     }
 

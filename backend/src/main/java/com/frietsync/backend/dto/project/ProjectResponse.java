@@ -33,8 +33,6 @@ public class ProjectResponse {
     private double progressPercentage;
     private int teamSize;
     private UUID adminId;
-    private UUID projectManagerId;
-    private UUID teamLeadId;
     private UserSummary projectManager;
     private UserSummary teamLead;
 
@@ -44,6 +42,7 @@ public class ProjectResponse {
         private UUID id;
         private String name;
         private String role;
+        private String profilePictureUrl;
     }
 
     public static ProjectResponse fromEntity(Project p, double progressPercentage) {
@@ -64,8 +63,6 @@ public class ProjectResponse {
                 .progressPercentage(progressPercentage)
                 .teamSize(p.getTeamSize())
                 .adminId(p.getAdminId())
-                .projectManagerId(p.getProjectManagerId())
-                .teamLeadId(p.getTeamLeadId())
                 .build();
     }
 }

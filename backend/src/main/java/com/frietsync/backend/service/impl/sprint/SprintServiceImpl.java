@@ -57,7 +57,7 @@ public class SprintServiceImpl implements SprintService {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
         requireProjectManagerOrTeamLead(project, currentUserId);
-        checkMilestoneProject(projectId, request.getMilestoneId());
+        checkMilestoneProject(projectId, request.getMilestoneId(), request.getEndDate());
         checkDates(request.getStartDate(), request.getEndDate());
         checkDatesWithinProject(project, request.getStartDate(), request.getEndDate());
         Integer highestNumber = sprintRepository.findMaxSprintNumber(projectId);
@@ -112,8 +112,11 @@ public class SprintServiceImpl implements SprintService {
                 : request.getEndDate();
         checkDates(updatedStartDate, updatedEndDate);
         Project project = findProjectForWrite(sprint.getProjectId());
+        UUID updatedMilestoneId = request.getMilestoneId() == null
+                ? sprint.getMilestoneId()
+                : request.getMilestoneId();
+        checkMilestoneProject(sprint.getProjectId(), updatedMilestoneId, updatedEndDate);
         if (request.getMilestoneId() != null) {
-            checkMilestoneProject(sprint.getProjectId(), request.getMilestoneId());
             sprint.setMilestoneId(request.getMilestoneId());
         }
         checkDatesWithinProject(project, updatedStartDate, updatedEndDate);
@@ -357,7 +360,7 @@ public class SprintServiceImpl implements SprintService {
         }
     }
 
-    private void checkMilestoneProject(UUID projectId, UUID milestoneId) {
+    private void checkMilestoneProject(UUID projectId, UUID milestoneId, LocalDate sprintEndDate) {
         if (milestoneId == null) {
             return;
         }
@@ -365,6 +368,9 @@ public class SprintServiceImpl implements SprintService {
                 .orElseThrow(() -> new ResourceNotFoundException("Milestone not found"));
         if (!projectId.equals(milestone.getProjectId())) {
             throw new BadRequestException("Milestone must belong to the sprint's project");
+        }
+        if (sprintEndDate != null && !sprintEndDate.isBefore(milestone.getDueDate())) {
+            throw new BadRequestException("Sprint due date needs to be before the milestone date");
         }
     }
 

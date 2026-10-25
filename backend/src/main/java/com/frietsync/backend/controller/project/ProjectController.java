@@ -19,9 +19,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RequestPart;
-import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -51,12 +50,11 @@ public class ProjectController {
         return ResponseEntity.ok(projectService.get(projectId, userId));
     }
 
-    @PutMapping(value = "/{projectId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PutMapping("/{projectId}")
     public ResponseEntity<ProjectResponse> update(@PathVariable UUID projectId,
-                                                  @Valid @RequestPart("project") ProjectRequest request,
-                                                  @RequestPart(value = "profilePicture", required = false) MultipartFile profilePicture,
+                                                  @Valid @RequestBody ProjectRequest request,
                                                   @AuthenticationPrincipal UUID userId) {
-        return ResponseEntity.ok(projectService.update(projectId, request, profilePicture, userId));
+        return ResponseEntity.ok(projectService.update(projectId, request, userId));
     }
 
     @PostMapping(value = "/{projectId}/profile-picture", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
