@@ -77,7 +77,7 @@ Configure `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_REDIRECT_URI` (the
 | DELETE | `/api/v1/integrations/github/projects/{projectId}/repository` | Unlink the project's repository; project admin, manager, or team lead only |
 | GET | `/api/v1/integrations/github/projects/{projectId}/contributions` | Return commit totals and daily counts, pull request totals, and merged pull request totals for project members |
 
-Each member connects their own GitHub account to associate a GitHub login with their FrietSync user. The member list includes users without a connection with zero activity. The repository must be readable by the account performing the contribution request. GitHub activity is fetched live and currently paginates up to the most recent 1,000 commits and 1,000 pull requests.
+Each member connects their own GitHub account to associate a GitHub login with their FrietSync user. A project admin, manager, or team lead can link a repository that belongs to another person or organization, provided their connected GitHub account has access to it. The repository must be readable by the account performing the contribution request; users without repository access cannot fetch its activity. The member list includes users without a GitHub connection with zero activity. GitHub activity is fetched live and currently paginates up to the most recent 1,000 commits and 1,000 pull requests.
 
 ### Workspaces and projects
 
@@ -90,7 +90,7 @@ Each member connects their own GitHub account to associate a GitHub login with t
 | GET | `/api/v1/workspaces/{workspaceId}/members` | Authenticated | List workspace members |
 | POST | `/api/v1/projects` | Authenticated | Create a project |
 | GET | `/api/v1/projects/me` | Authenticated | List the user's projects |
-| GET | `/api/v1/projects/{projectId}` | Authenticated | Get a project |
+| GET | `/api/v1/projects/{projectId}` | Authenticated | Get a project, including `githubRepositoryOwner` and `githubRepositoryName` when a GitHub repository is linked (both are `null` otherwise) |
 | PUT | `/api/v1/projects/{projectId}` | Authenticated | Update a project |
 | DELETE | `/api/v1/projects/{projectId}` | Authenticated | Delete a project |
 | GET | `/api/v1/projects/{projectId}/members` | Authenticated | List project members |
@@ -115,6 +115,7 @@ Each member connects their own GitHub account to associate a GitHub login with t
 | GET | `/api/v1/projects/{projectId}/issues` | Authenticated | List project issues |
 | GET | `/api/v1/issues/{issueId}` | Authenticated | Get an issue |
 | PATCH | `/api/v1/issues/{issueId}` | Authenticated | Update an issue |
+| PATCH | `/api/v1/issues/{issueId}/status` | Project admin or project manager | Set the issue status to any `IssueStatus` value |
 | DELETE | `/api/v1/issues/{issueId}` | Authenticated | Delete an issue |
 | POST | `/api/v1/issues/{issueId}/resolve` | Authenticated | Resolve an issue |
 | GET | `/api/v1/issues/{issueId}/history` | Authenticated | View issue history |
@@ -141,12 +142,15 @@ Each member connects their own GitHub account to associate a GitHub login with t
 | DELETE | `/api/v1/attachments/{attachmentId}` | Authenticated | Delete an attachment |
 | GET | `/api/v1/attachments/{attachmentId}/download` | Authenticated | Download an attachment |
 
-Issue creation is allowed for the project's Project Manager, Team Lead, or a Reporter. Sprint creation is allowed for the assigned Project Manager or Team Lead. Project Managers and Team Leads (and Admins) can assign issues to contributors; only the Project Manager can assign a sprint to a contributor. Contributors can request sprint assignment, which the Project Manager can approve.
+Project admins can perform all project-manager actions while retaining their existing admin-only actions. Issue creation is allowed for the project's Admin, Project Manager, Team Lead, or a Reporter. Sprint creation is allowed for the Admin, assigned Project Manager, or Team Lead. Project Managers, Admins, and Team Leads can assign issues to contributors; only the Project Manager or Admin can assign a sprint to a contributor. Contributors can request sprint assignment, which the Project Manager or Admin can approve.
+
+Project admins and project managers can set issue and sprint statuses directly through the status endpoints. Existing contributor issue-resolution and assigned-contributor sprint start/complete endpoints keep their current permissions.
 
 ### Sprint, meeting, poll, notifications, and chat
 
 | Method | URL | Access | Notes |
 |---|---|---|---|
+| PATCH | `/api/v1/sprints/{sprintId}/status` | Project admin or project manager | Set the sprint status to any `SprintStatus` value |
 | POST | `/api/v1/projects/{projectId}/polls` | Authenticated | Create a poll |
 | GET | `/api/v1/projects/{projectId}/polls` | Authenticated | List project polls |
 | GET | `/api/v1/polls/{pollId}` | Authenticated | Get a poll |
@@ -166,6 +170,8 @@ Issue creation is allowed for the project's Project Manager, Team Lead, or a Rep
 | GET | `/api/v1/notifications/preferences` | Authenticated | Get notification preferences |
 | PUT | `/api/v1/notifications/preferences` | Authenticated | Update notification preferences |
 | DELETE | `/api/v1/users/workspace/leave` | Authenticated | Leave the current workspace |
+
+Notifications are generated for issue assignment and review activity, project membership and role changes, comments and mentions, sprint assignment requests and assignments, poll creation, meetings, invites, and chat messages. To mention users in an issue or sprint comment, include their project participant IDs in the optional `mentionedUserIds` array alongside `content` (up to 50 IDs). Notifications are available through the notifications API and the `/user/queue/notifications` WebSocket destination. Email delivery follows each user's notification preferences.
 
 #### Poll API request and response formats
 
