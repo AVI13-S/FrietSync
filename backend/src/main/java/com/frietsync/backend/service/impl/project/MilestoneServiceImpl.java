@@ -80,6 +80,12 @@ public class MilestoneServiceImpl implements MilestoneService {
             milestone.setDescription(request.getDescription());
         }
         if (request.getDueDate() != null) {
+            for (Sprint sprint : sprintRepository.findByMilestoneId(milestoneId)) {
+                if (!sprint.getEndDate().isBefore(request.getDueDate())) {
+                    throw new BadRequestException(
+                            "Sprint due date needs to be before the milestone date");
+                }
+            }
             milestone.setDueDate(request.getDueDate());
         }
         return toResponse(milestoneRepository.save(milestone));

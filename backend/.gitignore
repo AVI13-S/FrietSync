@@ -35,3 +35,5 @@ build/
 ##ENV file##
 .env
 *.html
+!API-DOCUMENTATION.html
+!src/main/resources/static/API-DOCUMENTATION.html

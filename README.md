@@ -34,7 +34,9 @@ This is the authentication part of the FrietSync backend. It includes signup, lo
 
 ## APIs
 
-The backend routes are grouped under `/api/v1`, with additional project-scoped endpoints for sprints, issues, meetings, and chat.
+The backend routes are grouped under `/api/v1`, with selected v2 endpoints under `/api/v2`. Protected endpoints require `Authorization: Bearer <access-token>` unless noted otherwise.
+
+For copyable JSON request and response examples, including multipart, binary-download, OAuth, and WebSocket operations, see the [API request and response examples](docs/API_EXAMPLES.md). The reference covers every controller route and identifies endpoints that have no JSON body.
 
 | Method | URL | Access | Request body / notes |
 |---|---|---|---|
@@ -52,13 +54,13 @@ The backend routes are grouped under `/api/v1`, with additional project-scoped e
 | GET | `/api/v1/invites/me` | Authenticated | Lists the current user's pending invites |
 | POST | `/api/v1/invites/accept` | Authenticated | `inviteId` |
 | POST | `/api/v1/invites/reject` | Authenticated | `inviteId` |
-| POST | `/projects/{projectId}/sprints` | Authenticated | `name, startDate, endDate`, optional `goal` |
-| GET | `/projects/{projectId}/sprints` | Authenticated | Lists a project's sprints |
-| GET | `/sprints/{id}` | Authenticated | Gets a sprint |
-| PATCH | `/sprints/{id}` | Authenticated | Optional `name, goal, startDate, endDate` fields |
-| POST | `/sprints/{id}/start` | Authenticated | Starts a planned sprint |
-| POST | `/sprints/{id}/complete` | Authenticated | Completes an active sprint |
-| DELETE | `/sprints/{id}` | Authenticated | Deletes a sprint |
+| POST | `/api/v1/projects/{projectId}/sprints` | Authenticated | `name, startDate, endDate`, optional `goal` |
+| GET | `/api/v1/projects/{projectId}/sprints` | Authenticated | Lists a project's sprints |
+| GET | `/api/v1/sprints/{id}` | Authenticated | Gets a sprint |
+| PATCH | `/api/v1/sprints/{id}` | Authenticated | Optional `name, goal, startDate, endDate` fields |
+| POST | `/api/v1/sprints/{id}/start` | Authenticated | Starts a planned sprint |
+| POST | `/api/v1/sprints/{id}/complete` | Authenticated | Completes an active sprint |
+| DELETE | `/api/v1/sprints/{id}` | Authenticated | Deletes a sprint |
 
 ## Additional backend endpoints
 
@@ -91,15 +93,17 @@ Each member connects their own GitHub account to associate a GitHub login with t
 | POST | `/api/v1/projects` | Authenticated | Create a project |
 | GET | `/api/v1/projects/me` | Authenticated | List the user's projects |
 | GET | `/api/v1/projects/{projectId}` | Authenticated | Get a project, including `githubRepositoryOwner` and `githubRepositoryName` when a GitHub repository is linked (both are `null` otherwise) |
-| PUT | `/api/v1/projects/{projectId}` | Authenticated | Update a project |
+| PUT | `/api/v1/projects/{projectId}` | Authenticated | Update a project (`multipart/form-data`) |
+| POST | `/api/v1/projects/{projectId}/profile-picture` | Authenticated | Upload a project profile picture (`multipart/form-data`) |
+| DELETE | `/api/v1/projects/{projectId}/profile-picture` | Authenticated | Remove a project profile picture |
 | DELETE | `/api/v1/projects/{projectId}` | Authenticated | Delete a project |
 | GET | `/api/v1/projects/{projectId}/members` | Authenticated | List project members |
 | POST | `/api/v1/projects/{projectId}/members` | Authenticated | Add a project member |
 | DELETE | `/api/v1/projects/{projectId}/members/{memberUserId}` | Authenticated | Remove a project member |
-| POST | `/api/v1/projects/{projectId}/milestones` | Authenticated | Create a milestone |
-| GET | `/api/v1/projects/{projectId}/milestones` | Authenticated | List milestones |
-| PATCH | `/api/v1/milestones/{milestoneId}` | Authenticated | Update a milestone |
-| DELETE | `/api/v1/milestones/{milestoneId}` | Authenticated | Delete a milestone |
+| POST | `/api/v1/projects/{projectId}/milestones` | Project admin or project manager | Create a milestone |
+| GET | `/api/v1/projects/{projectId}/milestones` | Project member or project leader | List milestones |
+| PATCH | `/api/v1/milestones/{milestoneId}` | Project admin or project manager | Update a milestone |
+| DELETE | `/api/v1/milestones/{milestoneId}` | Project admin or project manager | Delete a milestone |
 | POST | `/api/v1/projects/{projectId}/releases` | Authenticated | Create a release |
 | GET | `/api/v1/projects/{projectId}/releases` | Authenticated | List releases |
 | PATCH | `/api/v1/releases/{releaseId}` | Authenticated | Update a release |
@@ -123,6 +127,11 @@ Each member connects their own GitHub account to associate a GitHub login with t
 | POST | `/api/v1/issues/{issueId}/review/reject` | Authenticated | Reject an issue review |
 | POST | `/api/v1/issues/{issueId}/labels` | Authenticated | Add an issue label |
 | GET | `/api/v1/issues/{issueId}/labels` | Authenticated | List labels |
+| DELETE | `/api/v1/issues/{issueId}/labels/{labelId}` | Authenticated | Remove an issue label |
+| GET | `/api/v1/issues/me` | Authenticated | List issues assigned to the current user |
+| PUT | `/api/v1/issues/{issueId}/github-issue` | Authenticated | Link an issue to a GitHub issue |
+| DELETE | `/api/v1/issues/{issueId}/github-issue` | Authenticated | Remove the GitHub issue link |
+| POST | `/api/v1/projects/{projectId}/issue` | Authenticated | Singular alias for issue creation |
 | POST | `/api/v1/issues/{issueId}/assign` | Authenticated | Assign an issue directly |
 
 | POST | `/api/v1/issues/{issueId}/request` | Authenticated | Request issue assignment |
@@ -161,7 +170,17 @@ Project admins and project managers can set issue and sprint statuses directly t
 | GET | `/api/v1/projects/{projectId}/meetings` | Authenticated | List project meetings |
 | PATCH | `/api/v1/meetings/{meetingId}` | Authenticated | Update a meeting |
 | DELETE | `/api/v1/meetings/{meetingId}` | Authenticated | Cancel a meeting |
-| GET | `/api/v1/projects/{projectId}/chat/messages?limit=50` | Authenticated | Fetch recent project chat messages |
+| GET | `/api/v1/projects/{projectId}/chat/messages?page=0&size=50` | Authenticated | Fetch chat messages; `size` is 1–100 |
+| GET | `/api/v1/projects/{projectId}/chat/messages/search?q=term&page=0&size=20` | Authenticated | Search project chat messages |
+| GET | `/api/v1/projects/{projectId}/chat/messages/around/{messageId}?before=25&after=25` | Authenticated | Fetch a message window; each count is 0–50 |
+| PATCH | `/api/v1/projects/{projectId}/chat/messages/{messageId}` | Authenticated | Edit a chat message |
+| DELETE | `/api/v1/projects/{projectId}/chat/messages/{messageId}` | Authenticated | Delete a chat message |
+| POST | `/api/v1/projects/{projectId}/chat/attachments` | Authenticated | Upload multipart `file` |
+| GET | `/api/v1/projects/{projectId}/chat/attachments?page=0` | Authenticated | List project chat attachments |
+| GET | `/api/v1/projects/{projectId}/chat/attachments/{attachmentId}/download` | Authenticated | Download a chat attachment |
+| GET | `/api/v1/projects/{projectId}/chat/mute` | Authenticated | Get your project chat mute state |
+| PUT | `/api/v1/projects/{projectId}/chat/mute` | Authenticated | Update your project chat mute state |
+| DELETE | `/api/v1/projects/{projectId}/chat/mute` | Authenticated | Clear your project chat mute state |
 | POST | `/app/projects/{projectId}/chat` | Authenticated | WebSocket destination for chat messages |
 | GET | `/api/v1/notifications` | Authenticated | List notifications |
 | POST | `/api/v1/notifications/{id}/read` | Authenticated | Mark a notification as read |
@@ -170,6 +189,72 @@ Project admins and project managers can set issue and sprint statuses directly t
 | GET | `/api/v1/notifications/preferences` | Authenticated | Get notification preferences |
 | PUT | `/api/v1/notifications/preferences` | Authenticated | Update notification preferences |
 | DELETE | `/api/v1/users/workspace/leave` | Authenticated | Leave the current workspace |
+
+### Users, workspace lifecycle, comments, documents, and reporting
+
+| Method | URL | Access | Notes |
+|---|---|---|---|
+| GET | `/api/v1/users/me` | Authenticated | Get the current user's profile |
+| PATCH | `/api/v1/users/me` | Authenticated | Update the current user's profile |
+| POST | `/api/v1/users/me/profile-picture` | Authenticated | Upload a profile picture (`multipart/form-data`) |
+| DELETE | `/api/v1/users/me/profile-picture` | Authenticated | Remove the current user's profile picture |
+| DELETE | `/api/v1/users/me` | Authenticated | Delete the current user's account |
+| DELETE | `/api/v1/workspaces/{workspaceId}` | Authenticated | Delete a workspace |
+| POST | `/api/v1/workspaces/{workspaceId}/restore` | Authenticated | Restore a deleted workspace |
+| PATCH | `/api/v2/workspaces/me` | Authenticated | Update the current workspace using the v2 API |
+| DELETE | `/api/v2/workspaces/me` | Authenticated | Delete the current workspace using the v2 API |
+| GET | `/api/v2/workspaces/me/members` | Authenticated | List current workspace members using the v2 API |
+| POST | `/api/v1/issues/{issueId}/comments` | Authenticated | Add an issue comment; accepts optional `mentionedUserIds` |
+| GET | `/api/v1/issues/{issueId}/comments` | Authenticated | List issue comments |
+| PATCH | `/api/v1/issues/{issueId}/comments/{commentId}` | Authenticated | Edit an issue comment |
+| DELETE | `/api/v1/issues/{issueId}/comments/{commentId}` | Authenticated | Delete an issue comment |
+| POST | `/api/v1/sprints/{sprintId}/comments` | Authenticated | Add a sprint comment; accepts optional `mentionedUserIds` |
+| GET | `/api/v1/sprints/{sprintId}/comments` | Authenticated | List sprint comments |
+| PATCH | `/api/v1/sprints/{sprintId}/comments/{commentId}` | Authenticated | Edit a sprint comment |
+| DELETE | `/api/v1/sprints/{sprintId}/comments/{commentId}` | Authenticated | Delete a sprint comment |
+| GET | `/api/v1/projects/{projectId}/documents` | Authenticated | List project documents |
+| POST | `/api/v1/projects/{projectId}/documents` | Authenticated | Create a project document |
+| GET | `/api/v1/documents/{documentId}` | Authenticated | Get a document |
+| PATCH | `/api/v1/documents/{documentId}` | Authenticated | Update a document |
+| DELETE | `/api/v1/documents/{documentId}` | Authenticated | Delete a document |
+| GET | `/api/v1/projects/{projectId}/presence` | Authenticated | Get current project presence |
+| GET | `/api/v1/projects/{projectId}/activity?page=0&size=20` | Authenticated | List recent project activity; `size` can be 1 through 100 |
+| GET | `/api/v1/projects/{projectId}/events` | Authenticated | List project events |
+| GET | `/api/v1/projects/{projectId}/summary` | Authenticated | Get project summary |
+| GET | `/api/v1/projects/{projectId}/summary/pdf` | Authenticated | Download project summary as PDF |
+| GET | `/api/v1/projects/{projectId}/board` | Authenticated | Get the project issue board |
+| GET | `/api/v1/projects/{projectId}/calendar` | Authenticated | Get project calendar data |
+| GET | `/api/v1/projects/{projectId}/timeline` | Authenticated | Get project timeline data |
+| GET | `/api/v1/users/{userId}/record` | Authenticated | Get an employee record |
+| GET | `/api/v1/users/{userId}/record/issues` | Authenticated | Get issue history for an employee record |
+| GET | `/api/v1/users/{userId}/record/sprints` | Authenticated | Get sprint history for an employee record |
+| GET | `/api/v1/users/{userId}/record/activity` | Authenticated | Get activity for an employee record |
+
+### Budget, briefing, replay, and integrations
+
+| Method | URL | Access | Notes |
+|---|---|---|---|
+| PUT | `/api/v1/projects/{projectId}/budget` | Authenticated | Set the project budget |
+| GET | `/api/v1/projects/{projectId}/budget` | Authenticated | Get the project budget |
+| GET | `/api/v1/projects/{projectId}/budget/report` | Authenticated | Get the project cost report |
+| POST | `/api/v1/projects/{projectId}/expenses` | Authenticated | Add a project expense |
+| GET | `/api/v1/projects/{projectId}/expenses` | Authenticated | List project expenses |
+| PATCH | `/api/v1/expenses/{expenseId}` | Authenticated | Update an expense |
+| DELETE | `/api/v1/expenses/{expenseId}` | Authenticated | Delete an expense |
+| PUT | `/api/v1/users/{userId}/salary` | Admin | Set salary data for a user |
+| GET | `/api/v1/briefing/today` | Authenticated | Get today's daily briefing |
+| GET | `/api/v1/briefing?date=YYYY-MM-DD` | Authenticated | Get a briefing for a specific date |
+| GET | `/api/v1/briefing/preferences` | Authenticated | Get briefing preferences |
+| PUT | `/api/v1/briefing/preferences` | Authenticated | Update briefing preferences |
+| GET | `/api/v1/projects/{projectId}/replay/timeline` | Authenticated | Get project replay phases |
+| PATCH | `/api/v1/projects/{projectId}/replay/phases/{phaseId}` | Authenticated | Update a replay phase |
+| GET | `/api/v1/projects/{projectId}/replay/snapshot?at=2026-10-10T12:00:00Z` | Authenticated | Get a replay snapshot at an optional ISO instant or date |
+| POST | `/api/v2/projects/{projectId}/issues` | Authenticated | Create an issue using the v2 API |
+| GET | `/api/v1/integrations/google/connect` | Authenticated | Start Google OAuth and return the authorization URL |
+| GET | `/api/v1/integrations/google/callback` | OAuth callback | Complete Google OAuth and redirect to the frontend |
+| DELETE | `/api/v1/integrations/google/disconnect` | Authenticated | Disconnect the Google account |
+
+The application also supports STOMP over `/ws`. The chat send destination is `/app/projects/{projectId}/chat`; clients receive project chat updates from `/topic/projects/{projectId}/chat`. WebSocket connections use the authenticated access token. See the poll and notification sections for their topic and queue destinations.
 
 Notifications are generated for issue assignment and review activity, project membership and role changes, comments and mentions, sprint assignment requests and assignments, poll creation, meetings, invites, and chat messages. To mention users in an issue or sprint comment, include their project participant IDs in the optional `mentionedUserIds` array alongside `content` (up to 50 IDs). Notifications are available through the notifications API and the `/user/queue/notifications` WebSocket destination. Email delivery follows each user's notification preferences.
 
@@ -265,7 +350,7 @@ The project page can use the existing endpoints below; no dashboard-specific rou
 | `GET /api/v1/projects/{projectId}/summary` | Issue and sprint totals, status counts, overdue counts, and estimated-hour summaries; use issue counts for task overview charts |
 | `GET /api/v1/projects/{projectId}/sprints` | Sprint details including status and assigned contributor name and ID |
 | `GET /api/v1/projects/{projectId}/milestones` | Milestone due date and `progressPercentage`; the existing service calculates progress from its sprints |
-| `GET /api/v1/projects/{projectId}/activity?limit=10` | Recent events with actor name and issue details; `limit` can be 1 through 100 |
+| `GET /api/v1/projects/{projectId}/activity?page=0&size=20` | Recent events with actor name and issue details; `size` can be 1 through 100 |
 | `GET /api/v1/projects/{projectId}/polls` | Polls ordered newest first, with option vote totals; the first entry is the latest poll |
 
 The board endpoint reports issue status and priority but does not track a separate issue completion percentage or link issues to sprints. Render task progress from the project summary status counts, and render sprint counts from sprint statuses. The project manager and team lead summaries contain names but not profile image URLs.
@@ -316,7 +401,9 @@ Admins can create invites using:
 POST /api/v1/admin/invites
 ```
 
-The admin must provide `email` and an allowed `role`. `expiresAt` is optional; if omitted, the invite expires after the default validity period.
+The admin must provide `email` and `purpose`. For workspace and project invites, include an allowed `role`; project invites also include `projectId`. `expiresAt` is optional; if omitted, the invite expires after the default validity period.
+
+Supported `purpose` values are `WORKSPACE_INVITE`, `PROJECT_INVITE`, and `OWNERSHIP_TRANSFER`.
 
 Allowed invite roles are:
 
@@ -334,6 +421,7 @@ Example:
 ```json
 {
   "email": "collaborator@example.com",
+  "purpose": "WORKSPACE_INVITE",
   "role": "PROJECT_MANAGER",
   "expiresAt": "2030-05-01T12:00:00Z"
 }
@@ -383,14 +471,16 @@ Expired invites are marked as `EXPIRED` when the recipient loads their pending i
 
 ## Sprints
 
-Sprint endpoints require authentication and currently use the paths shown in the API table (without the `/api/v1` prefix).
+Sprint endpoints require authentication and use the `/api/v1` prefix.
+
+When a sprint is linked to a milestone, its end date must be strictly earlier than the milestone due date. Creating or updating a sprint with an end date on or after that due date returns **400 Bad Request**. Moving a milestone due date to the same day as, or earlier than, any linked sprint's end date also returns **400 Bad Request** with `Sprint due date needs to be before the milestone date`.
 
 The assigned project manager or team lead can create a sprint. Only the project manager can assign a sprint to a project contributor.
 
 Create a sprint:
 
 ```http
-POST /projects/{projectId}/sprints
+POST /api/v1/projects/{projectId}/sprints
 ```
 
 ```json
@@ -402,9 +492,9 @@ POST /projects/{projectId}/sprints
 }
 ```
 
-`name`, `startDate`, and `endDate` are required. Dates use the `YYYY-MM-DD` format. New sprints start with status `PLANNED`; use `POST /sprints/{id}/start` to move one to `ACTIVE`, then `POST /sprints/{id}/complete` to move it to `COMPLETED`.
+`name`, `goal`, `startDate`, and `endDate` are required. Dates use the `YYYY-MM-DD` format. New sprints start with status `PLANNED`; use `POST /api/v1/sprints/{id}/start` to move one to `ACTIVE`, then `POST /api/v1/sprints/{id}/complete` to move it to `COMPLETED`.
 
-`PATCH /sprints/{id}` accepts any subset of `name`, `goal`, `startDate`, and `endDate`. `DELETE /sprints/{id}` deletes the sprint.
+`PATCH /api/v1/sprints/{id}` accepts any subset of `name`, `goal`, `startDate`, `endDate`, and `milestoneId`. `DELETE /api/v1/sprints/{id}` deletes the sprint.
 
 ---
 
@@ -420,11 +510,11 @@ Request body:
 {
   "name": "Test User",
   "email": "test@example.com",
-  "password": "test123"
+  "password": "Secure1!"
 }
 ```
 
-The name must contain letters only. The password must be between 6 and 20 characters and may contain letters, numbers, and symbols.
+The name may contain letters and spaces. The password must be 6–20 characters and contain at least one uppercase letter, one lowercase letter, one number, and one symbol.
 
 If the email is already registered, the API returns an error.
 
@@ -441,7 +531,7 @@ Request body:
 ```json
 {
   "email": "test@example.com",
-  "password": "test123"
+  "password": "Secure1!"
 }
 ```
 
