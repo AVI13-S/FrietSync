@@ -20,6 +20,7 @@ public class IssueCreateV2Request {
     private String description;
 
     private IssuePriority priority;
+    private LocalDate startDate;
     private LocalDate dueDate;
 
     @PositiveOrZero(message = "Estimated hours cannot be negative")

@@ -289,6 +289,7 @@ public class IssueLinkServiceImpl implements IssueLinkService {
                 .title(i.getTitle())
                 .status(i.getStatus())
                 .priority(i.getPriority())
+                .startDate(i.getStartDate())
                 .dueDate(i.getDueDate())
                 .build();
     }

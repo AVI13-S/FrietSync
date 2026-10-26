@@ -17,6 +17,8 @@ public class IssueUpdateRequest {
 
     private IssuePriority priority;
 
+    private LocalDate startDate;
+
     private LocalDate dueDate;
 
     @PositiveOrZero(message = "Estimated hours cannot be negative")

@@ -5,6 +5,7 @@ import com.frietsync.backend.dto.project.ProjectInviteRequest;
 import com.frietsync.backend.dto.invite.InviteResponse;
 import com.frietsync.backend.dto.project.ProjectRequest;
 import com.frietsync.backend.dto.project.ProjectResponse;
+import com.frietsync.backend.dto.project.ProjectListResponse;
 import com.frietsync.backend.service.project.ProjectService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -40,7 +41,7 @@ public class ProjectController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<List<ProjectResponse>> myProjects(@AuthenticationPrincipal UUID userId) {
+    public ResponseEntity<List<ProjectListResponse>> myProjects(@AuthenticationPrincipal UUID userId) {
         return ResponseEntity.ok(projectService.myProjects(userId));
     }
 

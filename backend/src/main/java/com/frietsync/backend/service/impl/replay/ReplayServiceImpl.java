@@ -194,6 +194,7 @@ public class ReplayServiceImpl implements ReplayService {
                     .title(issue.getTitle())
                     .status(shown)
                     .priority(issue.getPriority())
+                    .startDate(issue.getStartDate())
                     .dueDate(issue.getDueDate())
                     .build());
         }

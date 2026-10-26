@@ -21,6 +21,7 @@ public class IssueResponse {
     private String description;
     private IssueStatus status;
     private IssuePriority priority;
+    private LocalDate startDate;
     private LocalDate dueDate;
     private Double estimatedHours;
     private UUID createdBy;

@@ -58,6 +58,7 @@ public class IssueMapper {
                 .description(i.getDescription())
                 .status(i.getStatus())
                 .priority(i.getPriority())
+                .startDate(i.getStartDate())
                 .dueDate(i.getDueDate())
                 .estimatedHours(i.getEstimatedHours())
                 .createdBy(i.getCreatedBy())
