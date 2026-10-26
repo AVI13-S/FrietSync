@@ -7,4 +7,6 @@ import java.util.UUID;
 
 public interface PollOptionRepository extends JpaRepository<PollOption, UUID> {
     List<PollOption> findByPollIdOrderByOptionOrder(UUID pollId);
+
+    List<PollOption> findByPollIdInOrderByOptionOrder(List<UUID> pollIds);
 }

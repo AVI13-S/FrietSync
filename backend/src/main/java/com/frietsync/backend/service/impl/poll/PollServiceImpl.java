@@ -33,6 +33,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -41,8 +42,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -140,6 +143,7 @@ public class PollServiceImpl implements PollService {
         if (project.getTeamLeadId() != null) recipients.add(project.getTeamLeadId());
         memberRepository.findByProjectId(projectId).stream()
                 .map(com.frietsync.backend.entity.project.ProjectMember::getUserId).forEach(recipients::add);
+        recipients.remove(userId);
         String pollQuestion = poll.getQuestion();
         recipients.forEach(recipient -> notificationPublisher.publish(recipient, NotificationType.POLL_CREATED,
                 "New project poll", "A new poll was created: " + pollQuestion, projectId, null, userId));
@@ -157,8 +161,46 @@ public class PollServiceImpl implements PollService {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
         requireMember(project, userId);
-        return pollRepository.findByProjectIdOrderByCreatedAtDesc(projectId).stream()
-                .map(poll -> response(closeIfExpired(poll), userId)).toList();
+        List<Poll> polls = pollRepository.findByProjectIdOrderByCreatedAtDesc(projectId);
+        List<PollResponse> responses = new ArrayList<>();
+        if (polls.isEmpty()) {
+            return responses;
+        }
+        List<UUID> pollIds = new ArrayList<>();
+        for (Poll poll : polls) {
+            pollIds.add(poll.getId());
+        }
+        Map<UUID, List<PollOption>> optionsByPoll = new HashMap<>();
+        for (PollOption option : optionRepository.findByPollIdInOrderByOptionOrder(pollIds)) {
+            List<PollOption> pollOptions = optionsByPoll.get(option.getPollId());
+            if (pollOptions == null) {
+                pollOptions = new ArrayList<>();
+                optionsByPoll.put(option.getPollId(), pollOptions);
+            }
+            pollOptions.add(option);
+        }
+        Map<UUID, List<PollVote>> votesByPoll = new HashMap<>();
+        for (PollVote vote : voteRepository.findByPollIdIn(pollIds)) {
+            List<PollVote> pollVotes = votesByPoll.get(vote.getPollId());
+            if (pollVotes == null) {
+                pollVotes = new ArrayList<>();
+                votesByPoll.put(vote.getPollId(), pollVotes);
+            }
+            pollVotes.add(vote);
+        }
+        for (Poll poll : polls) {
+            Poll current = closeIfExpired(poll);
+            List<PollOption> options = optionsByPoll.get(current.getId());
+            if (options == null) {
+                options = new ArrayList<>();
+            }
+            List<PollVote> votes = votesByPoll.get(current.getId());
+            if (votes == null) {
+                votes = new ArrayList<>();
+            }
+            responses.add(PollResponse.from(current, options, votes, userId));
+        }
+        return responses;
     }
 
     @Override
@@ -171,13 +213,15 @@ public class PollServiceImpl implements PollService {
     }
 
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = BadRequestException.class)
     public PollResponse vote(UUID pollId, VoteRequest request, UUID userId) {
         Poll poll = pollRepository.findByIdForUpdate(pollId)
                 .orElseThrow(() -> new ResourceNotFoundException("Poll not found"));
         requireMember(findProject(poll.getProjectId()), userId);
         if (poll.getStatus() == PollStatus.OPEN && poll.getEndsAt() != null
                 && !Instant.now().isBefore(poll.getEndsAt())) {
+            closePoll(poll);
+            publishAfterCommit("POLL_CLOSED", response(poll, poll.getCreatedBy()));
             throw new BadRequestException("This poll has expired");
         }
         requireOpen(poll);
@@ -246,6 +290,15 @@ public class PollServiceImpl implements PollService {
     public void scheduleExistingPolls() {
         pollRepository.findByStatusAndEndsAtIsNotNull(PollStatus.OPEN)
                 .forEach(poll -> scheduleExpiration(poll.getId(), poll.getEndsAt()));
+    }
+
+    @Scheduled(fixedDelay = 60000)
+    public void closeExpiredPolls() {
+        List<Poll> overdue = pollRepository.findByStatusAndEndsAtLessThanEqual(PollStatus.OPEN, Instant.now());
+        for (Poll poll : overdue) {
+            UUID pollId = poll.getId();
+            transactionTemplate.executeWithoutResult(transaction -> expirePoll(pollId));
+        }
     }
 
     private void scheduleExpiration(UUID pollId, Instant endsAt) {

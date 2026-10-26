@@ -8,5 +8,6 @@ import java.util.UUID;
 public interface PollVoteRepository extends JpaRepository<PollVote, UUID> {
     List<PollVote> findByPollIdAndUserId(UUID pollId, UUID userId);
     List<PollVote> findByPollId(UUID pollId);
+    List<PollVote> findByPollIdIn(List<UUID> pollIds);
     void deleteByPollIdAndUserId(UUID pollId, UUID userId);
 }
