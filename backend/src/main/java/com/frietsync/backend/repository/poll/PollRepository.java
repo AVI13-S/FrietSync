@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import jakarta.persistence.LockModeType;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -15,6 +16,8 @@ public interface PollRepository extends JpaRepository<Poll, UUID> {
     List<Poll> findByProjectIdOrderByCreatedAtDesc(UUID projectId);
 
     List<Poll> findByStatusAndEndsAtIsNotNull(PollStatus status);
+
+    List<Poll> findByStatusAndEndsAtLessThanEqual(PollStatus status, Instant now);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from Poll p where p.id = :id")
