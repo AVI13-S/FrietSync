@@ -3,6 +3,9 @@ package com.frietsync.backend.repository.issue;
 import com.frietsync.backend.entity.issue.AssignmentRequestStatus;
 import com.frietsync.backend.entity.issue.IssueAssignmentRequest;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -19,4 +22,10 @@ public interface IssueAssignmentRequestRepository extends JpaRepository<IssueAss
             UUID projectId, AssignmentRequestStatus status);
 
     void deleteByIssueId(UUID issueId);
+
+    @Modifying
+    @Query("delete from IssueAssignmentRequest request where request.status = :status "
+            + "and request.createdAt < :cutoff")
+    int deleteExpiredPendingRequests(@Param("status") AssignmentRequestStatus status,
+                                     @Param("cutoff") java.time.Instant cutoff);
 }

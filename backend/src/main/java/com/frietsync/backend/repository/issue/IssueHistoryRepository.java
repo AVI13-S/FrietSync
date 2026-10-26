@@ -23,6 +23,18 @@ public interface IssueHistoryRepository extends JpaRepository<IssueHistory, UUID
             + "order by h.createdAt desc, h.id desc")
     Page<IssueHistory> findAllForProject(@Param("projectId") UUID projectId, Pageable pageable);
 
+    @Query("select h from IssueHistory h where h.issueId in "
+            + "(select i.id from Issue i where i.projectId = :projectId) "
+            + "and (h.action = com.frietsync.backend.entity.issue.IssueHistoryAction.CREATED "
+            + "or h.action = com.frietsync.backend.entity.issue.IssueHistoryAction.RESOLVED "
+            + "or h.action = com.frietsync.backend.entity.issue.IssueHistoryAction.REVIEW_APPROVED "
+            + "or (h.action = com.frietsync.backend.entity.issue.IssueHistoryAction.UPDATED "
+            + "and (h.fieldName is null or h.fieldName <> 'assignees') "
+            + "and (h.fieldName is null or h.fieldName <> 'status' "
+            + "or h.newValue = 'RESOLVED' or h.newValue = 'CLOSED'))) "
+            + "order by h.createdAt desc, h.id desc")
+    Page<IssueHistory> findRecentActivityForProject(@Param("projectId") UUID projectId, Pageable pageable);
+
     @Query("select h from IssueHistory h where h.action = :action and h.issueId in "
             + "(select i.id from Issue i where i.projectId = :projectId) "
             + "order by h.createdAt desc, h.id desc")

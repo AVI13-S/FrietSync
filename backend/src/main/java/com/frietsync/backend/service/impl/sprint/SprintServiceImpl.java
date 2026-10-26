@@ -28,6 +28,7 @@ import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.service.sprint.SprintService;
 import com.frietsync.backend.service.notification.NotificationPublisher;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
+import com.frietsync.backend.service.impl.activity.ProjectActivityRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,6 +51,7 @@ public class SprintServiceImpl implements SprintService {
     private final SprintCommentRepository sprintCommentRepository;
     private final ProjectAccess projectAccess;
     private final NotificationPublisher notificationPublisher;
+    private final ProjectActivityRecorder activityRecorder;
 
     @Override
     @Transactional
@@ -57,7 +59,7 @@ public class SprintServiceImpl implements SprintService {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
         requireProjectManagerOrTeamLead(project, currentUserId);
-        checkMilestoneProject(projectId, request.getMilestoneId());
+        checkMilestoneProject(projectId, request.getMilestoneId(), request.getEndDate());
         checkDates(request.getStartDate(), request.getEndDate());
         checkDatesWithinProject(project, request.getStartDate(), request.getEndDate());
         Integer highestNumber = sprintRepository.findMaxSprintNumber(projectId);
@@ -112,8 +114,11 @@ public class SprintServiceImpl implements SprintService {
                 : request.getEndDate();
         checkDates(updatedStartDate, updatedEndDate);
         Project project = findProjectForWrite(sprint.getProjectId());
+        UUID updatedMilestoneId = request.getMilestoneId() == null
+                ? sprint.getMilestoneId()
+                : request.getMilestoneId();
+        checkMilestoneProject(sprint.getProjectId(), updatedMilestoneId, updatedEndDate);
         if (request.getMilestoneId() != null) {
-            checkMilestoneProject(sprint.getProjectId(), request.getMilestoneId());
             sprint.setMilestoneId(request.getMilestoneId());
         }
         checkDatesWithinProject(project, updatedStartDate, updatedEndDate);
@@ -130,8 +135,15 @@ public class SprintServiceImpl implements SprintService {
     public SprintResponse changeStatus(UUID sprintId, ChangeSprintStatusRequest request, UUID currentUserId) {
         Sprint sprint = findSprintForWrite(sprintId);
         requireProjectManager(sprint.getProjectId(), currentUserId);
+        if (sprint.getStatus() == request.status()) {
+            return toResponse(sprint);
+        }
         sprint.setStatus(request.status());
-        return toResponse(sprintRepository.save(sprint));
+        Sprint updatedSprint = sprintRepository.save(sprint);
+        if (updatedSprint.getStatus() == SprintStatus.COMPLETED) {
+            recordMilestoneCompletion(updatedSprint, currentUserId);
+        }
+        return toResponse(updatedSprint);
     }
 
     @Override
@@ -158,6 +170,7 @@ public class SprintServiceImpl implements SprintService {
         }
         sprint.setStatus(SprintStatus.COMPLETED);
         Sprint updatedSprint = sprintRepository.save(sprint);
+        recordMilestoneCompletion(updatedSprint, currentUserId);
         return toResponse(updatedSprint);
     }
 
@@ -336,6 +349,20 @@ public class SprintServiceImpl implements SprintService {
         }
     }
 
+    private void recordMilestoneCompletion(Sprint completedSprint, UUID actorId) {
+        UUID milestoneId = completedSprint.getMilestoneId();
+        if (milestoneId == null) {
+            return;
+        }
+        Milestone milestone = milestoneRepository.findById(milestoneId).orElse(null);
+        long totalSprints = sprintRepository.countByMilestoneId(milestoneId);
+        long completedSprints = sprintRepository.countByMilestoneIdAndStatus(milestoneId, SprintStatus.COMPLETED);
+        if (milestone != null && totalSprints > 0 && totalSprints == completedSprints) {
+            activityRecorder.recordOnce(completedSprint.getProjectId(), actorId, "MILESTONE", milestone.getId(),
+                    milestone.getName(), "COMPLETED");
+        }
+    }
+
     private void checkContributor(UUID projectId, UUID contributorId) {
         Project project = findProjectOrThrow(projectId);
         projectAccess.requireWorkspaceAndActive(project, contributorId);
@@ -357,7 +384,7 @@ public class SprintServiceImpl implements SprintService {
         }
     }
 
-    private void checkMilestoneProject(UUID projectId, UUID milestoneId) {
+    private void checkMilestoneProject(UUID projectId, UUID milestoneId, LocalDate sprintEndDate) {
         if (milestoneId == null) {
             return;
         }
@@ -365,6 +392,9 @@ public class SprintServiceImpl implements SprintService {
                 .orElseThrow(() -> new ResourceNotFoundException("Milestone not found"));
         if (!projectId.equals(milestone.getProjectId())) {
             throw new BadRequestException("Milestone must belong to the sprint's project");
+        }
+        if (sprintEndDate != null && !sprintEndDate.isBefore(milestone.getDueDate())) {
+            throw new BadRequestException("Sprint due date needs to be before the milestone date");
         }
     }
 

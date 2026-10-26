@@ -30,6 +30,8 @@ public class ChatAuthChannelInterceptor implements ChannelInterceptor {
     private static final String CHAT_SUFFIX = "/chat";
     private static final String TOPIC_PREFIX = "/topic/projects/";
     private static final String CALLS_SUFFIX = "/calls";
+    private static final String ACTIVITY_SUFFIX = "/activity";
+    private static final String APP_PROJECT_PREFIX = "/app/projects/";
     private static final String NOTIFICATION_DESTINATION = "/user/queue/notifications";
 
     private final ChatService chatService;
@@ -117,6 +119,14 @@ public class ChatAuthChannelInterceptor implements ChannelInterceptor {
                 && destination.endsWith(CALLS_SUFFIX)) {
             return topicProjectId(destination, CALLS_SUFFIX);
         }
+        if (destination != null && destination.startsWith(TOPIC_PREFIX)
+                && destination.endsWith(ACTIVITY_SUFFIX)) {
+            return topicProjectId(destination, ACTIVITY_SUFFIX);
+        }
+        if (destination != null && destination.startsWith(APP_PROJECT_PREFIX)
+                && destination.endsWith(ACTIVITY_SUFFIX)) {
+            return projectId(destination, APP_PROJECT_PREFIX, ACTIVITY_SUFFIX);
+        }
         String pollResultsPrefix = "/topic/polls/";
         String pollResultsSuffix = "/results";
         if (destination != null && destination.startsWith(pollResultsPrefix)
@@ -146,7 +156,11 @@ public class ChatAuthChannelInterceptor implements ChannelInterceptor {
     }
 
     private UUID topicProjectId(String destination, String suffix) {
-        String value = destination.substring(TOPIC_PREFIX.length(), destination.length() - suffix.length());
+        return projectId(destination, TOPIC_PREFIX, suffix);
+    }
+
+    private UUID projectId(String destination, String prefix, String suffix) {
+        String value = destination.substring(prefix.length(), destination.length() - suffix.length());
         try {
             if (value.isBlank() || value.contains("/")) throw new IllegalArgumentException();
             return UUID.fromString(value);

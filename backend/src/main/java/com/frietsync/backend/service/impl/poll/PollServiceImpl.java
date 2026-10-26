@@ -28,6 +28,7 @@ import com.frietsync.backend.repository.sprint.SprintRepository;
 import com.frietsync.backend.service.poll.PollService;
 import com.frietsync.backend.service.notification.NotificationPublisher;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
+import com.frietsync.backend.service.impl.activity.ProjectActivityRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -62,6 +63,7 @@ public class PollServiceImpl implements PollService {
     private final PollExpirationScheduler expirationScheduler;
     private final TransactionTemplate transactionTemplate;
     private final NotificationPublisher notificationPublisher;
+    private final ProjectActivityRecorder activityRecorder;
 
     @Override
     @Transactional
@@ -121,6 +123,7 @@ public class PollServiceImpl implements PollService {
         poll.setMilestoneId(request.getMilestoneId());
         poll.setEndsAt(endsAt);
         poll = pollRepository.save(poll);
+        activityRecorder.record(projectId, userId, "POLL", poll.getId(), poll.getQuestion(), "CREATED");
         UUID pollId = poll.getId();
         List<PollOption> options = new ArrayList<>();
         for (int index = 0; index < request.getOptions().size(); index++) {
