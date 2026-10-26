@@ -30,6 +30,7 @@ import com.frietsync.backend.repository.project.ProjectRepository;
 import com.frietsync.backend.repository.sprint.SprintRepository;
 import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.service.briefing.BriefingService;
+import com.frietsync.backend.service.impl.activity.ActivityMessageFormatter;
 import com.frietsync.backend.service.notification.NotificationService;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
 import lombok.RequiredArgsConstructor;
@@ -400,12 +401,17 @@ public class BriefingServiceImpl implements BriefingService {
             Issue issue = myIssues.get(entry.getIssueId());
             result.add(ActivityResponse.builder()
                     .id(entry.getId())
+                    .resourceType("ISSUE")
+                    .resourceId(entry.getIssueId())
+                    .resourceName(issue.getTitle())
+                    .message(ActivityMessageFormatter.forIssue(
+                            entry, issue.getIssueNumber(), issue.getTitle(), names.get(entry.getActorId())))
                     .issueId(entry.getIssueId())
                     .issueNumber(issue.getIssueNumber())
                     .issueTitle(issue.getTitle())
                     .actorId(entry.getActorId())
                     .actorName(names.get(entry.getActorId()))
-                    .action(entry.getAction())
+                    .action(entry.getAction().name())
                     .fieldName(entry.getFieldName())
                     .oldValue(entry.getOldValue())
                     .newValue(entry.getNewValue())

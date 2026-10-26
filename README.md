@@ -182,6 +182,8 @@ Project admins and project managers can set issue and sprint statuses directly t
 | PUT | `/api/v1/projects/{projectId}/chat/mute` | Authenticated | Update your project chat mute state |
 | DELETE | `/api/v1/projects/{projectId}/chat/mute` | Authenticated | Clear your project chat mute state |
 | POST | `/app/projects/{projectId}/chat` | Authenticated | WebSocket destination for chat messages |
+| SUBSCRIBE | `/app/projects/{projectId}/activity` | Authenticated | Receive the latest 10 issue, milestone, and poll-creation activity events once |
+| SUBSCRIBE | `/topic/projects/{projectId}/activity` | Authenticated | Receive the refreshed latest 10 issue, milestone, and poll-creation events |
 | GET | `/api/v1/notifications` | Authenticated | List notifications |
 | POST | `/api/v1/notifications/{id}/read` | Authenticated | Mark a notification as read |
 | POST | `/api/v1/notifications/read-all` | Authenticated | Mark all notifications as read |
@@ -218,7 +220,7 @@ Project admins and project managers can set issue and sprint statuses directly t
 | PATCH | `/api/v1/documents/{documentId}` | Authenticated | Update a document |
 | DELETE | `/api/v1/documents/{documentId}` | Authenticated | Delete a document |
 | GET | `/api/v1/projects/{projectId}/presence` | Authenticated | Get current project presence |
-| GET | `/api/v1/projects/{projectId}/activity?page=0&size=20` | Authenticated | List recent project activity; `size` can be 1 through 100 |
+| GET | `/api/v1/projects/{projectId}/activity` | Authenticated | Get the latest 10 issue, milestone, and poll-creation events |
 | GET | `/api/v1/projects/{projectId}/events` | Authenticated | List project events |
 | GET | `/api/v1/projects/{projectId}/summary` | Authenticated | Get project summary |
 | GET | `/api/v1/projects/{projectId}/summary/pdf` | Authenticated | Download project summary as PDF |
@@ -254,7 +256,7 @@ Project admins and project managers can set issue and sprint statuses directly t
 | GET | `/api/v1/integrations/google/callback` | OAuth callback | Complete Google OAuth and redirect to the frontend |
 | DELETE | `/api/v1/integrations/google/disconnect` | Authenticated | Disconnect the Google account |
 
-The application also supports STOMP over `/ws`. The chat send destination is `/app/projects/{projectId}/chat`; clients receive project chat updates from `/topic/projects/{projectId}/chat`. WebSocket connections use the authenticated access token. See the poll and notification sections for their topic and queue destinations.
+The application also supports STOMP over `/ws`. The chat send destination is `/app/projects/{projectId}/chat`; clients receive project chat updates from `/topic/projects/{projectId}/chat`. For project activity, subscribe to `/topic/projects/{projectId}/activity` for refreshed latest-10 lists, and `/app/projects/{projectId}/activity` for the current snapshot. The feed includes issue creation, edits, and completion; milestone creation, edits, and completion; and poll creation. WebSocket connections use the authenticated access token and project subscriptions require project membership. See the poll and notification sections for their topic and queue destinations.
 
 Notifications are generated for issue assignment and review activity, project membership and role changes, comments and mentions, sprint assignment requests and assignments, poll creation, meetings, invites, and chat messages. To mention users in an issue or sprint comment, include their project participant IDs in the optional `mentionedUserIds` array alongside `content` (up to 50 IDs). Notifications are available through the notifications API and the `/user/queue/notifications` WebSocket destination. Email delivery follows each user's notification preferences.
 
@@ -350,7 +352,7 @@ The project page can use the existing endpoints below; no dashboard-specific rou
 | `GET /api/v1/projects/{projectId}/summary` | Issue and sprint totals, status counts, overdue counts, and estimated-hour summaries; use issue counts for task overview charts |
 | `GET /api/v1/projects/{projectId}/sprints` | Sprint details including status and assigned contributor name and ID |
 | `GET /api/v1/projects/{projectId}/milestones` | Milestone due date and `progressPercentage`; the existing service calculates progress from its sprints |
-| `GET /api/v1/projects/{projectId}/activity?page=0&size=20` | Recent events with actor name and issue details; `size` can be 1 through 100 |
+| `GET /api/v1/projects/{projectId}/activity` | Latest 10 issue, milestone, and poll-creation events with actor and message details |
 | `GET /api/v1/projects/{projectId}/polls` | Polls ordered newest first, with option vote totals; the first entry is the latest poll |
 
 The board endpoint reports issue status and priority but does not track a separate issue completion percentage or link issues to sprints. Render task progress from the project summary status counts, and render sprint counts from sprint statuses. The project manager and team lead summaries contain names but not profile image URLs.

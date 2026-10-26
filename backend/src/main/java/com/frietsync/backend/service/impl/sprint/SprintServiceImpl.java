@@ -28,6 +28,7 @@ import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.service.sprint.SprintService;
 import com.frietsync.backend.service.notification.NotificationPublisher;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
+import com.frietsync.backend.service.impl.activity.ProjectActivityRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,6 +51,7 @@ public class SprintServiceImpl implements SprintService {
     private final SprintCommentRepository sprintCommentRepository;
     private final ProjectAccess projectAccess;
     private final NotificationPublisher notificationPublisher;
+    private final ProjectActivityRecorder activityRecorder;
 
     @Override
     @Transactional
@@ -133,8 +135,15 @@ public class SprintServiceImpl implements SprintService {
     public SprintResponse changeStatus(UUID sprintId, ChangeSprintStatusRequest request, UUID currentUserId) {
         Sprint sprint = findSprintForWrite(sprintId);
         requireProjectManager(sprint.getProjectId(), currentUserId);
+        if (sprint.getStatus() == request.status()) {
+            return toResponse(sprint);
+        }
         sprint.setStatus(request.status());
-        return toResponse(sprintRepository.save(sprint));
+        Sprint updatedSprint = sprintRepository.save(sprint);
+        if (updatedSprint.getStatus() == SprintStatus.COMPLETED) {
+            recordMilestoneCompletion(updatedSprint, currentUserId);
+        }
+        return toResponse(updatedSprint);
     }
 
     @Override
@@ -161,6 +170,7 @@ public class SprintServiceImpl implements SprintService {
         }
         sprint.setStatus(SprintStatus.COMPLETED);
         Sprint updatedSprint = sprintRepository.save(sprint);
+        recordMilestoneCompletion(updatedSprint, currentUserId);
         return toResponse(updatedSprint);
     }
 
@@ -336,6 +346,20 @@ public class SprintServiceImpl implements SprintService {
                 || userId.equals(project.getTeamLeadId());
         if (!projectRoleMember && !projectMemberRepository.existsByProjectIdAndUserId(projectId, userId)) {
             throw new ForbiddenException("You are not a member of this project");
+        }
+    }
+
+    private void recordMilestoneCompletion(Sprint completedSprint, UUID actorId) {
+        UUID milestoneId = completedSprint.getMilestoneId();
+        if (milestoneId == null) {
+            return;
+        }
+        Milestone milestone = milestoneRepository.findById(milestoneId).orElse(null);
+        long totalSprints = sprintRepository.countByMilestoneId(milestoneId);
+        long completedSprints = sprintRepository.countByMilestoneIdAndStatus(milestoneId, SprintStatus.COMPLETED);
+        if (milestone != null && totalSprints > 0 && totalSprints == completedSprints) {
+            activityRecorder.recordOnce(completedSprint.getProjectId(), actorId, "MILESTONE", milestone.getId(),
+                    milestone.getName(), "COMPLETED");
         }
     }
 

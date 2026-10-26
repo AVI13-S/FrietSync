@@ -15,6 +15,7 @@ import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
 import com.frietsync.backend.repository.sprint.SprintRepository;
 import com.frietsync.backend.service.project.MilestoneService;
+import com.frietsync.backend.service.impl.activity.ProjectActivityRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +34,7 @@ public class MilestoneServiceImpl implements MilestoneService {
     private final ProjectMemberRepository projectMemberRepository;
     private final SprintRepository sprintRepository;
     private final ProjectAccess projectAccess;
+    private final ProjectActivityRecorder activityRecorder;
 
     @Override
     @Transactional
@@ -45,7 +47,10 @@ public class MilestoneServiceImpl implements MilestoneService {
         milestone.setName(request.getName().trim());
         milestone.setDescription(request.getDescription());
         milestone.setDueDate(request.getDueDate());
-        return toResponse(milestoneRepository.save(milestone));
+        Milestone savedMilestone = milestoneRepository.save(milestone);
+        activityRecorder.record(projectId, userId, "MILESTONE", savedMilestone.getId(),
+                savedMilestone.getName(), "CREATED");
+        return toResponse(savedMilestone);
     }
 
     @Override
@@ -88,7 +93,10 @@ public class MilestoneServiceImpl implements MilestoneService {
             }
             milestone.setDueDate(request.getDueDate());
         }
-        return toResponse(milestoneRepository.save(milestone));
+        Milestone updatedMilestone = milestoneRepository.save(milestone);
+        activityRecorder.record(updatedMilestone.getProjectId(), userId, "MILESTONE", updatedMilestone.getId(),
+                updatedMilestone.getName(), "UPDATED");
+        return toResponse(updatedMilestone);
     }
 
     @Override

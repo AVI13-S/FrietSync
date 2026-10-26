@@ -218,6 +218,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleStorageServiceException(
             StorageServiceException ex,
             HttpServletRequest request) {
+        LOG.error("Storage operation failed for {}: {}", request.getRequestURI(), ex.getMessage(), ex);
         ErrorResponse errorResponse = new ErrorResponse(
                 Instant.now(),
                 HttpStatus.BAD_GATEWAY.value(),

@@ -7,6 +7,7 @@ import com.frietsync.backend.dto.activity.PresenceSprintResponse;
 import com.frietsync.backend.dto.activity.ProjectSummaryResponse;
 import com.frietsync.backend.dto.issue.IssuePageResponse;
 import com.frietsync.backend.dto.issue.IssueSummaryResponse;
+import com.frietsync.backend.entity.activity.ProjectActivity;
 import com.frietsync.backend.entity.issue.Issue;
 import com.frietsync.backend.entity.issue.IssueAssignee;
 import com.frietsync.backend.entity.issue.IssueHistory;
@@ -21,6 +22,7 @@ import com.frietsync.backend.entity.user.User;
 import com.frietsync.backend.repository.issue.IssueAssigneeRepository;
 import com.frietsync.backend.repository.issue.IssueHistoryRepository;
 import com.frietsync.backend.repository.issue.IssueRepository;
+import com.frietsync.backend.repository.activity.ProjectActivityRepository;
 import com.frietsync.backend.repository.sprint.SprintRepository;
 import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.service.activity.ActivityService;
@@ -39,6 +41,7 @@ import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -56,6 +59,7 @@ public class ActivityServiceImpl implements ActivityService {
     private final ProjectAccess projectAccess;
     private final IssueRepository issueRepository;
     private final IssueHistoryRepository historyRepository;
+    private final ProjectActivityRepository projectActivityRepository;
     private final IssueAssigneeRepository assigneeRepository;
     private final SprintRepository sprintRepository;
     private final UserRepository userRepository;
@@ -163,19 +167,40 @@ public class ActivityServiceImpl implements ActivityService {
 
 
     @Override
-    public IssuePageResponse<ActivityResponse> recentActivity(UUID projectId, UUID userId, int page, int size) {
+    public List<ActivityResponse> recentActivity(UUID projectId, UUID userId) {
         Project project = projectAccess.project(projectId);
         projectAccess.requireMember(project, userId);
 
-        Pageable pageable = PageRequest.of(page, size);
-        Page<IssueHistory> entries = historyRepository.findAllForProject(projectId, pageable);
-        return IssuePageResponse.<ActivityResponse>builder()
-                .items(toActivities(entries.getContent()))
-                .page(entries.getNumber())
-                .size(entries.getSize())
-                .totalElements(entries.getTotalElements())
-                .totalPages(entries.getTotalPages())
-                .build();
+        return latestActivityForProject(projectId);
+    }
+
+    @Override
+    public List<ActivityResponse> latestActivityForProject(UUID projectId) {
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<IssueHistory> issueEntries = historyRepository.findRecentActivityForProject(projectId, pageable);
+        List<ActivityResponse> activities = new ArrayList<>(toActivities(issueEntries.getContent()));
+        List<ProjectActivity> projectEntries = projectActivityRepository
+                .findByProjectIdAndResourceTypeInOrderByCreatedAtDescIdDesc(
+                        projectId, List.of("MILESTONE", "POLL"), pageable);
+        Map<UUID, String> names = userNames(projectEntries.stream().map(ProjectActivity::getActorId).toList());
+        for (ProjectActivity entry : projectEntries) {
+            activities.add(ActivityResponse.builder()
+                    .id(entry.getId())
+                    .resourceType(entry.getResourceType())
+                    .resourceId(entry.getResourceId())
+                    .resourceName(entry.getResourceName())
+                    .message(ActivityMessageFormatter.forProjectActivity(entry, names.get(entry.getActorId())))
+                    .actorId(entry.getActorId())
+                    .actorName(names.get(entry.getActorId()))
+                    .action(entry.getAction())
+                    .createdAt(entry.getCreatedAt())
+                    .build());
+        }
+        return activities.stream()
+                .sorted(Comparator.comparing(ActivityResponse::getCreatedAt).reversed()
+                        .thenComparing(ActivityResponse::getId, Comparator.reverseOrder()))
+                .limit(10)
+                .toList();
     }
 
     @Override
@@ -434,12 +459,17 @@ public class ActivityServiceImpl implements ActivityService {
             }
             result.add(ActivityResponse.builder()
                     .id(entry.getId())
+                    .resourceType("ISSUE")
+                    .resourceId(entry.getIssueId())
+                    .resourceName(issueTitle)
+                    .message(ActivityMessageFormatter.forIssue(
+                            entry, issueNumber, issueTitle, names.get(entry.getActorId())))
                     .issueId(entry.getIssueId())
                     .issueNumber(issueNumber)
                     .issueTitle(issueTitle)
                     .actorId(entry.getActorId())
                     .actorName(names.get(entry.getActorId()))
-                    .action(entry.getAction())
+                    .action(entry.getAction().name())
                     .fieldName(entry.getFieldName())
                     .oldValue(entry.getOldValue())
                     .newValue(entry.getNewValue())
