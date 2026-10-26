@@ -41,6 +41,7 @@ public class IssueHistoryRecorder {
         entry.setNewValue(text(newValue));
         entry.setComment(text(comment));
         historyRepository.save(entry);
+        events.publishEvent(new IssueHistoryRecordedEvent(entry));
         if (isRecentActivity(action, field, newValue)) {
             issueRepository.findById(issueId).ifPresent(issue ->
                     events.publishEvent(new ProjectActivityUpdatedEvent(issue.getProjectId())));
