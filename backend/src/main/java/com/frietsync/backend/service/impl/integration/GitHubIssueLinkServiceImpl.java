@@ -13,6 +13,7 @@ import com.frietsync.backend.exception.ForbiddenException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.repository.integration.GitHubConnectionRepository;
 import com.frietsync.backend.repository.issue.IssueRepository;
+import com.frietsync.backend.repository.issue.IssueAssignmentRequestRepository;
 import com.frietsync.backend.repository.project.ProjectGitHubRepositoryRepository;
 import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
@@ -36,6 +37,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class GitHubIssueLinkServiceImpl implements GitHubIssueLinkService {
     private final IssueRepository issueRepository;
+    private final IssueAssignmentRequestRepository assignmentRequestRepository;
     private final ProjectGitHubRepositoryRepository projectRepositoryLink;
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository memberRepository;
@@ -184,6 +186,7 @@ public class GitHubIssueLinkServiceImpl implements GitHubIssueLinkService {
             if ("closed".equalsIgnoreCase(state)) {
                 issue.setStatus(IssueStatus.CLOSED);
                 if (issue.getClosedAt() == null) issue.setClosedAt(java.time.Instant.now());
+                assignmentRequestRepository.deleteByIssueId(issue.getId());
             } else if ("open".equalsIgnoreCase(state) && issue.getStatus() == IssueStatus.CLOSED) {
                 issue.setStatus(IssueStatus.REOPENED);
                 issue.setClosedAt(null);

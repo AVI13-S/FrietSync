@@ -263,6 +263,7 @@ public class IssueAssignmentServiceImpl implements IssueAssignmentService {
                 approve ? "Issue request approved" : "Issue request rejected",
                 "Your request for " + issueLabel + " was " + (approve ? "approved" : "rejected") + ".",
                 req.getProjectId(), req.getIssueId(), deciderId);
+        requestRepository.delete(req);
     }
 
     private void notifyProjectLeads(Project project, NotificationType type, String title,

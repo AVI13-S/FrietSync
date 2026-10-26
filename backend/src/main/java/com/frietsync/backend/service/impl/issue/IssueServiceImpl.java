@@ -246,6 +246,9 @@ public class IssueServiceImpl implements IssueService {
         }
 
         issueRepository.save(issue);
+        if (newStatus == IssueStatus.RESOLVED || newStatus == IssueStatus.CLOSED) {
+            requestRepository.deleteByIssueId(issueId);
+        }
         history.record(issueId, userId, IssueHistoryAction.UPDATED,
                 "status", previousStatus, newStatus);
         return mapper.toResponse(issue);
@@ -296,6 +299,7 @@ public class IssueServiceImpl implements IssueService {
         issue.setStatus(IssueStatus.RESOLVED);
         issue.setResolvedAt(Instant.now());
         issueRepository.save(issue);
+        requestRepository.deleteByIssueId(issueId);
 
         history.record(issueId, userId, IssueHistoryAction.RESOLVED, "status", old, issue.getStatus());
         notifyIssuePeople(issue, project, NotificationType.ISSUE_RESOLVED,
@@ -335,6 +339,9 @@ public class IssueServiceImpl implements IssueService {
             issue.setResolvedAt(null);
         }
         issueRepository.save(issue);
+        if (approve) {
+            requestRepository.deleteByIssueId(issueId);
+        }
         githubIssueLinkService.syncStatus(issue, userId);
 
         history.record(issueId, userId,
