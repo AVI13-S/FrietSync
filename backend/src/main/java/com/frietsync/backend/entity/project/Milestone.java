@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import java.time.LocalDate;
+import java.time.Instant;
 import java.util.UUID;
 
 @Data
@@ -27,4 +28,7 @@ public class Milestone extends BaseEntity {
 
     @Column(name = "due_date", nullable = false)
     private LocalDate dueDate;
+
+    @Column(name = "completed_at")
+    private Instant completedAt;
 }

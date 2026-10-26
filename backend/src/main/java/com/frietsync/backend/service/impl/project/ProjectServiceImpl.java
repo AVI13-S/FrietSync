@@ -5,6 +5,7 @@ import com.frietsync.backend.dto.project.ProjectInviteRequest;
 import com.frietsync.backend.dto.invite.InviteResponse;
 import com.frietsync.backend.dto.project.ProjectRequest;
 import com.frietsync.backend.dto.project.ProjectResponse;
+import com.frietsync.backend.dto.project.ProjectListResponse;
 import com.frietsync.backend.entity.project.Project;
 import com.frietsync.backend.entity.project.ProjectMember;
 import com.frietsync.backend.entity.project.ProjectStatus;
@@ -149,16 +150,28 @@ public class ProjectServiceImpl implements ProjectService {
         return manager.getId();
     }
     @Override
-    public List<ProjectResponse> myProjects(UUID userId) {
+    public List<ProjectListResponse> myProjects(UUID userId) {
         UUID workspaceId = projectAccess.requireActiveWorkspace(userId);
-        List<ProjectResponse> responses = new ArrayList<>();
+        List<ProjectListResponse> responses = new ArrayList<>();
         for (Project project : projectRepository.findAllForUser(userId)) {
             if (workspaceId.equals(project.getWorkspaceId())) {
-                responses.add(toResponse(project));
+                responses.add(toListResponse(project));
             }
         }
         return responses;
     }
+
+    private ProjectListResponse toListResponse(Project project) {
+        long totalSprints = sprintRepository.countByProjectId(project.getId());
+        long completedSprints = sprintRepository.countByProjectIdAndStatus(
+                project.getId(), SprintStatus.COMPLETED);
+        double progress = totalSprints == 0 ? 0 : completedSprints * 100.0 / totalSprints;
+        long issueCount = issueRepository.countByProjectIdAndDeletedAtIsNull(project.getId());
+        ProjectListResponse response = ProjectListResponse.fromEntity(project, totalSprints, issueCount, progress);
+        response.setProfilePictureUrl(projectProfilePictureUrl(project));
+        return response;
+    }
+
     @Override
     public ProjectResponse get(UUID projectId, UUID userId) {
         Project project = find(projectId);
@@ -246,16 +259,21 @@ public class ProjectServiceImpl implements ProjectService {
             response.setGithubRepositoryName(repository.getRepositoryName());
         });
         response.setCreatedByName(userRepository.findById(project.getCreatedBy()).map(User::getName).orElse(null));
-        if (project.getProfilePictureKey() != null && bucketName != null && !bucketName.isBlank()) {
-            GetObjectRequest getRequest = GetObjectRequest.builder().bucket(bucketName)
-                    .key(project.getProfilePictureKey()).build();
-            GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
-                    .signatureDuration(Duration.ofHours(1)).getObjectRequest(getRequest).build();
-            response.setProfilePictureUrl(s3Presigner.presignGetObject(presignRequest).url().toString());
-        }
+        response.setProfilePictureUrl(projectProfilePictureUrl(project));
         response.setProjectManager(userSummary(project.getProjectManagerId()));
         response.setTeamLead(userSummary(project.getTeamLeadId()));
         return response;
+    }
+
+    private String projectProfilePictureUrl(Project project) {
+        if (project.getProfilePictureKey() == null || bucketName == null || bucketName.isBlank()) {
+            return null;
+        }
+        GetObjectRequest getRequest = GetObjectRequest.builder().bucket(bucketName)
+                .key(project.getProfilePictureKey()).build();
+        GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+                .signatureDuration(Duration.ofHours(1)).getObjectRequest(getRequest).build();
+        return s3Presigner.presignGetObject(presignRequest).url().toString();
     }
 
     private ProjectResponse.UserSummary userSummary(UUID userId) {

@@ -500,6 +500,7 @@ public class BriefingServiceImpl implements BriefingService {
                 .title(issue.getTitle())
                 .status(status)
                 .priority(issue.getPriority())
+                .startDate(issue.getStartDate())
                 .dueDate(issue.getDueDate())
                 .build();
     }

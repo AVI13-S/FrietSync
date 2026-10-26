@@ -28,7 +28,7 @@ import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.service.sprint.SprintService;
 import com.frietsync.backend.service.notification.NotificationPublisher;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
-import com.frietsync.backend.service.impl.activity.ProjectActivityRecorder;
+import com.frietsync.backend.service.impl.project.MilestoneCompletionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,7 +51,7 @@ public class SprintServiceImpl implements SprintService {
     private final SprintCommentRepository sprintCommentRepository;
     private final ProjectAccess projectAccess;
     private final NotificationPublisher notificationPublisher;
-    private final ProjectActivityRecorder activityRecorder;
+    private final MilestoneCompletionService milestoneCompletionService;
 
     @Override
     @Transactional
@@ -76,6 +76,7 @@ public class SprintServiceImpl implements SprintService {
         sprint.setCreatedBy(currentUserId);
 
         Sprint savedSprint = sprintRepository.save(sprint);
+        milestoneCompletionService.refresh(savedSprint.getMilestoneId(), currentUserId);
         project.setSprintCounter(nextNumber);
         projectRepository.save(project);
         return toResponse(savedSprint);
@@ -105,6 +106,7 @@ public class SprintServiceImpl implements SprintService {
     public SprintResponse updateSprint(UUID sprintId, UpdateSprintRequest request, UUID currentUserId) {
         Sprint sprint = findSprintOrThrow(sprintId);
         requireProjectManager(sprint.getProjectId(), currentUserId);
+        UUID previousMilestoneId = sprint.getMilestoneId();
 
         LocalDate updatedStartDate = request.getStartDate() == null
                 ? sprint.getStartDate()
@@ -127,6 +129,10 @@ public class SprintServiceImpl implements SprintService {
         sprint.setStartDate(updatedStartDate);
         sprint.setEndDate(updatedEndDate);
         Sprint updatedSprint = sprintRepository.save(sprint);
+        if (!java.util.Objects.equals(previousMilestoneId, updatedSprint.getMilestoneId())) {
+            milestoneCompletionService.refresh(previousMilestoneId, currentUserId);
+        }
+        milestoneCompletionService.refresh(updatedSprint.getMilestoneId(), currentUserId);
         return toResponse(updatedSprint);
     }
 
@@ -140,9 +146,7 @@ public class SprintServiceImpl implements SprintService {
         }
         sprint.setStatus(request.status());
         Sprint updatedSprint = sprintRepository.save(sprint);
-        if (updatedSprint.getStatus() == SprintStatus.COMPLETED) {
-            recordMilestoneCompletion(updatedSprint, currentUserId);
-        }
+        milestoneCompletionService.refresh(updatedSprint.getMilestoneId(), currentUserId);
         return toResponse(updatedSprint);
     }
 
@@ -157,6 +161,7 @@ public class SprintServiceImpl implements SprintService {
 
         sprint.setStatus(SprintStatus.ACTIVE);
         Sprint updatedSprint = sprintRepository.save(sprint);
+        milestoneCompletionService.refresh(updatedSprint.getMilestoneId(), currentUserId);
         return toResponse(updatedSprint);
     }
 
@@ -170,7 +175,7 @@ public class SprintServiceImpl implements SprintService {
         }
         sprint.setStatus(SprintStatus.COMPLETED);
         Sprint updatedSprint = sprintRepository.save(sprint);
-        recordMilestoneCompletion(updatedSprint, currentUserId);
+        milestoneCompletionService.refresh(updatedSprint.getMilestoneId(), currentUserId);
         return toResponse(updatedSprint);
     }
 
@@ -179,9 +184,11 @@ public class SprintServiceImpl implements SprintService {
     public void deleteSprint(UUID sprintId, UUID currentUserId) {
         Sprint sprint = findSprintOrThrow(sprintId);
         requireProjectManager(sprint.getProjectId(), currentUserId);
+        UUID milestoneId = sprint.getMilestoneId();
         assignmentRequestRepository.deleteBySprintId(sprintId);
         sprintCommentRepository.deleteBySprintId(sprintId);
         sprintRepository.delete(sprint);
+        milestoneCompletionService.refresh(milestoneId, currentUserId);
     }
 
     @Override
@@ -346,20 +353,6 @@ public class SprintServiceImpl implements SprintService {
                 || userId.equals(project.getTeamLeadId());
         if (!projectRoleMember && !projectMemberRepository.existsByProjectIdAndUserId(projectId, userId)) {
             throw new ForbiddenException("You are not a member of this project");
-        }
-    }
-
-    private void recordMilestoneCompletion(Sprint completedSprint, UUID actorId) {
-        UUID milestoneId = completedSprint.getMilestoneId();
-        if (milestoneId == null) {
-            return;
-        }
-        Milestone milestone = milestoneRepository.findById(milestoneId).orElse(null);
-        long totalSprints = sprintRepository.countByMilestoneId(milestoneId);
-        long completedSprints = sprintRepository.countByMilestoneIdAndStatus(milestoneId, SprintStatus.COMPLETED);
-        if (milestone != null && totalSprints > 0 && totalSprints == completedSprints) {
-            activityRecorder.recordOnce(completedSprint.getProjectId(), actorId, "MILESTONE", milestone.getId(),
-                    milestone.getName(), "COMPLETED");
         }
     }
 

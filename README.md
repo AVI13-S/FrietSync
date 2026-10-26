@@ -351,7 +351,7 @@ The project page can use the existing endpoints below; no dashboard-specific rou
 | `GET /api/v1/projects/{projectId}/board` | Issue columns and card data, including assignee (`id`, `name`), labels (`id`, `name`, `color`), `assignedToCurrentUser`, and top-level `myTasksCount` |
 | `GET /api/v1/projects/{projectId}/summary` | Issue and sprint totals, status counts, overdue counts, and estimated-hour summaries; use issue counts for task overview charts |
 | `GET /api/v1/projects/{projectId}/sprints` | Sprint details including status and assigned contributor name and ID |
-| `GET /api/v1/projects/{projectId}/milestones` | Milestone due date and `progressPercentage`; the existing service calculates progress from its sprints |
+| `GET /api/v1/projects/{projectId}/milestones` | Milestone due date, progress, and completion state |
 | `GET /api/v1/projects/{projectId}/activity` | Latest 10 issue, milestone, and poll-creation events with actor and message details |
 | `GET /api/v1/projects/{projectId}/polls` | Polls ordered newest first, with option vote totals; the first entry is the latest poll |
 
@@ -476,6 +476,8 @@ Expired invites are marked as `EXPIRED` when the recipient loads their pending i
 Sprint endpoints require authentication and use the `/api/v1` prefix.
 
 When a sprint is linked to a milestone, its end date must be strictly earlier than the milestone due date. Creating or updating a sprint with an end date on or after that due date returns **400 Bad Request**. Moving a milestone due date to the same day as, or earlier than, any linked sprint's end date also returns **400 Bad Request** with `Sprint due date needs to be before the milestone date`.
+
+A milestone is automatically marked complete when it has at least one linked sprint and every linked sprint is `COMPLETED`. Its response includes `completed` and `completedAt`; reopening, deleting, or moving a sprint out of the milestone clears its completion state if the condition no longer holds.
 
 The assigned project manager or team lead can create a sprint. Only the project manager can assign a sprint to a project contributor.
 
