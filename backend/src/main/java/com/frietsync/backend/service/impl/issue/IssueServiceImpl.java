@@ -78,8 +78,8 @@ public class IssueServiceImpl implements IssueService {
 
     @Override
     public IssueResponse create(UUID projectId, IssueRequest r, UUID userId) {
-        Issue issue = createIssue(projectId, r.getTitle(), r.getDescription(), r.getPriority(), r.getDueDate(),
-                r.getEstimatedHours(), userId);
+        Issue issue = createIssue(projectId, r.getTitle(), r.getDescription(), r.getPriority(), r.getStartDate(),
+                r.getDueDate(), r.getEstimatedHours(), userId);
         if (r.getGithubIssueNumber() != null) {
             return githubIssueLinkService.link(issue.getId(), r.getGithubIssueNumber(), userId);
         }
@@ -99,7 +99,7 @@ public class IssueServiceImpl implements IssueService {
             throw new BadRequestException("githubIssueNumber is only allowed for LINK_EXISTING");
         }
         Issue issue = createIssue(projectId, request.getTitle(), request.getDescription(), request.getPriority(),
-                request.getDueDate(), request.getEstimatedHours(), userId);
+                request.getStartDate(), request.getDueDate(), request.getEstimatedHours(), userId);
         return switch (action) {
             case LOCAL -> mapper.toResponse(issue);
             case LINK_EXISTING -> githubIssueLinkService.link(issue.getId(), request.getGithubIssueNumber(), userId);
@@ -108,7 +108,8 @@ public class IssueServiceImpl implements IssueService {
     }
 
     private Issue createIssue(UUID projectId, String title, String description, IssuePriority priority,
-                              java.time.LocalDate dueDate, Double estimatedHours, UUID userId) {
+                              java.time.LocalDate startDate, java.time.LocalDate dueDate,
+                              Double estimatedHours, UUID userId) {
         Project project = projectRepository.findByIdForUpdate(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
         Role role = access.requireMember(project, userId);
@@ -118,6 +119,7 @@ public class IssueServiceImpl implements IssueService {
             throw new ForbiddenException(
                     "Only the project admin, project manager, team lead, or a reporter can create issues");
         }
+        validateIssueDates(project, startDate, dueDate);
         project.setIssueCounter(project.getIssueCounter() + 1);
         projectRepository.save(project);
 
@@ -127,6 +129,7 @@ public class IssueServiceImpl implements IssueService {
         issue.setTitle(title.trim());
         issue.setDescription(description);
         issue.setPriority(priority != null ? priority : IssuePriority.MEDIUM);
+        issue.setStartDate(startDate);
         issue.setDueDate(dueDate);
         issue.setEstimatedHours(estimatedHours);
         issue.setCreatedBy(userId);
@@ -188,6 +191,12 @@ public class IssueServiceImpl implements IssueService {
             throw new BadRequestException("Closed issues cannot be edited");
         }
 
+        java.time.LocalDate updatedStartDate = r.getStartDate() == null ? issue.getStartDate() : r.getStartDate();
+        java.time.LocalDate updatedDueDate = r.getDueDate() == null ? issue.getDueDate() : r.getDueDate();
+        if (r.getStartDate() != null || r.getDueDate() != null) {
+            validateIssueDates(project, updatedStartDate, updatedDueDate);
+        }
+
         if (r.getTitle() != null) {
             String title = r.getTitle().trim();
             if (title.isEmpty()) {
@@ -203,6 +212,10 @@ public class IssueServiceImpl implements IssueService {
         if (r.getPriority() != null) {
             track(issueId, userId, "priority", issue.getPriority(), r.getPriority());
             issue.setPriority(r.getPriority());
+        }
+        if (r.getStartDate() != null) {
+            track(issueId, userId, "startDate", issue.getStartDate(), r.getStartDate());
+            issue.setStartDate(r.getStartDate());
         }
         if (r.getDueDate() != null) {
             track(issueId, userId, "dueDate", issue.getDueDate(), r.getDueDate());
@@ -475,6 +488,28 @@ public class IssueServiceImpl implements IssueService {
         issueLinkRepository.deleteBySourceIssueIdOrTargetIssueId(id, id);
         historyRepository.deleteByIssueId(id);
         issueRepository.delete(issue);
+    }
+
+    private void validateIssueDates(Project project, java.time.LocalDate startDate, java.time.LocalDate dueDate) {
+        if (startDate != null && dueDate != null && dueDate.isBefore(startDate)) {
+            throw new BadRequestException("Issue due date cannot be before its start date");
+        }
+        if (project.getStartDate() != null) {
+            if (startDate != null && startDate.isBefore(project.getStartDate())) {
+                throw new BadRequestException("Issue start date cannot be before the project start date");
+            }
+            if (dueDate != null && dueDate.isBefore(project.getStartDate())) {
+                throw new BadRequestException("Issue due date cannot be before the project start date");
+            }
+        }
+        if (project.getDeadline() != null) {
+            if (startDate != null && startDate.isAfter(project.getDeadline())) {
+                throw new BadRequestException("Issue start date cannot be after the project deadline");
+            }
+            if (dueDate != null && dueDate.isAfter(project.getDeadline())) {
+                throw new BadRequestException("Issue due date cannot be after the project deadline");
+            }
+        }
     }
 
     private void track(UUID issueId, UUID userId, String field, Object oldValue, Object newValue) {

@@ -17,5 +17,6 @@ public class IssueSummaryResponse {
     private String title;
     private IssueStatus status;
     private IssuePriority priority;
+    private LocalDate startDate;
     private LocalDate dueDate;
 }

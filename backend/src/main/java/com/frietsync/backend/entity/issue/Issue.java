@@ -43,6 +43,9 @@ public class Issue extends BaseEntity {
     @Column(nullable = false)
     private IssuePriority priority = IssuePriority.MEDIUM;
 
+    @Column(name = "start_date")
+    private LocalDate startDate;
+
     @Column(name = "due_date")
     private LocalDate dueDate;
 

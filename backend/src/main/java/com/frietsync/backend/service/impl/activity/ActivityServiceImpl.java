@@ -106,6 +106,7 @@ public class ActivityServiceImpl implements ActivityService {
                             .title(issue.getTitle())
                             .status(issue.getStatus())
                             .priority(issue.getPriority())
+                            .startDate(issue.getStartDate())
                             .dueDate(issue.getDueDate())
                             .build());
                 }
