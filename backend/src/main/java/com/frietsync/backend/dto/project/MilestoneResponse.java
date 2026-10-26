@@ -13,6 +13,8 @@ public record MilestoneResponse(
         String description,
         LocalDate dueDate,
         double progressPercentage,
+        boolean completed,
+        Instant completedAt,
         Instant createdAt,
         Instant updatedAt
 ) {
@@ -25,6 +27,8 @@ public record MilestoneResponse(
                 milestone.getDescription(),
                 milestone.getDueDate(),
                 progressPercentage,
+                milestone.getCompletedAt() != null,
+                milestone.getCompletedAt(),
                 milestone.getCreatedAt(),
                 milestone.getUpdatedAt()
         );
