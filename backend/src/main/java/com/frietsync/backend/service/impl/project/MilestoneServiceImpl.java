@@ -41,6 +41,7 @@ public class MilestoneServiceImpl implements MilestoneService {
     public MilestoneResponse create(UUID projectId, UUID userId, MilestoneRequest request) {
         Project project = findProject(projectId);
         requireProjectManager(project, userId);
+        validateDueDate(project, request.getDueDate());
 
         Milestone milestone = new Milestone();
         milestone.setProjectId(projectId);
@@ -70,7 +71,8 @@ public class MilestoneServiceImpl implements MilestoneService {
     @Transactional
     public MilestoneResponse update(UUID milestoneId, UUID userId, UpdateMilestoneRequest request) {
         Milestone milestone = findMilestone(milestoneId);
-        requireProjectManager(findProject(milestone.getProjectId()), userId);
+        Project project = findProject(milestone.getProjectId());
+        requireProjectManager(project, userId);
 
         if (request.getName() != null) {
             if (!StringUtils.hasText(request.getName()) || request.getName().length() > 200) {
@@ -85,6 +87,7 @@ public class MilestoneServiceImpl implements MilestoneService {
             milestone.setDescription(request.getDescription());
         }
         if (request.getDueDate() != null) {
+            validateDueDate(project, request.getDueDate());
             for (Sprint sprint : sprintRepository.findByMilestoneId(milestoneId)) {
                 if (!sprint.getEndDate().isBefore(request.getDueDate())) {
                     throw new BadRequestException(
@@ -97,6 +100,18 @@ public class MilestoneServiceImpl implements MilestoneService {
         activityRecorder.record(updatedMilestone.getProjectId(), userId, "MILESTONE", updatedMilestone.getId(),
                 updatedMilestone.getName(), "UPDATED");
         return toResponse(updatedMilestone);
+    }
+
+    private void validateDueDate(Project project, java.time.LocalDate dueDate) {
+        if (dueDate == null) {
+            throw new BadRequestException("Milestone due date is required");
+        }
+        if (project.getStartDate() != null && dueDate.isBefore(project.getStartDate())) {
+            throw new BadRequestException("Milestone due date cannot be before the project start date");
+        }
+        if (project.getDeadline() != null && dueDate.isAfter(project.getDeadline())) {
+            throw new BadRequestException("Milestone due date cannot be after the project deadline");
+        }
     }
 
     @Override

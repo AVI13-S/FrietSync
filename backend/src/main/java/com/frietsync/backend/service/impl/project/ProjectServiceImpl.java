@@ -334,6 +334,26 @@ public class ProjectServiceImpl implements ProjectService {
                 .anyMatch(userId::equals);
         return leader || projectMemberRepository.existsByProjectIdAndUserId(p.getId(), userId);
     }
+
+    private void validateProjectDueDates(Project project, LocalDate startDate, LocalDate deadline) {
+        if (startDate != null && deadline != null && deadline.isBefore(startDate)) {
+            throw new BadRequestException("Deadline cannot be before start date");
+        }
+        if (project.getId() == null
+                || (Objects.equals(project.getStartDate(), startDate)
+                && Objects.equals(project.getDeadline(), deadline))) {
+            return;
+        }
+        for (var milestone : milestoneRepository.findByProjectIdOrderByDueDateAsc(project.getId())) {
+            if (startDate != null && milestone.getDueDate().isBefore(startDate)) {
+                throw new BadRequestException("Project start date cannot be after a milestone due date");
+            }
+            if (deadline != null && milestone.getDueDate().isAfter(deadline)) {
+                throw new BadRequestException("Project deadline cannot be before a milestone due date");
+            }
+        }
+    }
+
     private void apply(Project project, ProjectRequest request, UUID actorId, UUID workspaceId) {
         if (workspaceId == null) {
             throw new BadRequestException("Project must belong to a workspace");
@@ -346,9 +366,14 @@ public class ProjectServiceImpl implements ProjectService {
         User actor = userRepository.findById(actorId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         requireSameWorkspace(actor, workspaceId, "You");
-        if (request.getStartDate() != null && request.getDeadline() != null
-                && request.getDeadline().isBefore(request.getStartDate())) {
-            throw new BadRequestException("Deadline cannot be before start date");
+        validateProjectDueDates(project, request.getStartDate(), request.getDeadline());
+        ProjectStatus requestedStatus = request.getStatus() == null ? project.getStatus() : request.getStatus();
+        LocalDate requestedCompleteDate = requestedStatus == ProjectStatus.COMPLETED
+                ? (project.getCompleteDate() == null ? LocalDate.now() : project.getCompleteDate())
+                : null;
+        if (request.getStartDate() != null && requestedCompleteDate != null
+                && requestedCompleteDate.isBefore(request.getStartDate())) {
+            throw new BadRequestException("Project cannot be completed before its start date");
         }
         project.setName(request.getName().trim());
         project.setDescription(request.getDescription());
