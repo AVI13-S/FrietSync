@@ -3,8 +3,6 @@ package com.frietsync.backend.entity.issue;
 import com.frietsync.backend.entity.common.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
@@ -34,9 +32,8 @@ public class IssueLink extends BaseEntity {
     @Column(name = "target_issue_id", nullable = false, updatable = false)
     private UUID targetIssueId;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "link_type", nullable = false, length = 20)
-    private IssueLinkType type;
+    private String linkType = "RELATES_TO";
 
     @Column(name = "created_by", nullable = false, updatable = false)
     private UUID createdBy;
