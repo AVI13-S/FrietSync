@@ -167,9 +167,8 @@ public class ProjectServiceImpl implements ProjectService {
                 project.getId(), SprintStatus.COMPLETED);
         double progress = totalSprints == 0 ? 0 : completedSprints * 100.0 / totalSprints;
         long issueCount = issueRepository.countByProjectIdAndDeletedAtIsNull(project.getId());
-        ProjectListResponse response = ProjectListResponse.fromEntity(project, totalSprints, issueCount, progress);
-        response.setProfilePictureUrl(projectProfilePictureUrl(project));
-        return response;
+        return ProjectListResponse.fromEntity(project, projectProfilePictureUrl(project), totalSprints,
+                issueCount, progress);
     }
 
     @Override

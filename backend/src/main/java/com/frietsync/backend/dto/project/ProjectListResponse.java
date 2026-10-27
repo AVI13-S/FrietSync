@@ -24,11 +24,12 @@ public class ProjectListResponse {
     private long issueCount;
     private double progressPercentage;
 
-    public static ProjectListResponse fromEntity(Project project, long sprintCount,
-                                                 long issueCount, double progressPercentage) {
+    public static ProjectListResponse fromEntity(Project project, String profilePictureUrl,
+                                                 long sprintCount, long issueCount, double progressPercentage) {
         return ProjectListResponse.builder()
                 .id(project.getId())
                 .name(project.getName())
+                .profilePictureUrl(profilePictureUrl)
                 .adminId(project.getAdminId())
                 .description(project.getDescription())
                 .memberCount(project.getTeamSize())
