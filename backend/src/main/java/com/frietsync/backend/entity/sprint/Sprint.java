@@ -22,8 +22,8 @@ public class Sprint extends BaseEntity {
     @Column(name = "project_id", nullable = false)
     private UUID projectId;
 
-    @Column(name = "milestone_id")
-    private UUID milestoneId;
+    @Column(name = "issue_id")
+    private UUID issueId;
 
     @Column(name = "sprint_number", nullable = false)
     private Integer sprintNumber;

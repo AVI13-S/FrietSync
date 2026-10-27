@@ -22,5 +22,5 @@ public class CreateSprintRequest {
     @NotNull(message = "End date is required")
     private LocalDate endDate;
 
-    private UUID milestoneId;
+    private UUID issueId;
 }

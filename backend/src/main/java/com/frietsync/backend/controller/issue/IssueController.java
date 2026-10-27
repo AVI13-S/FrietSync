@@ -53,7 +53,7 @@ public class IssueController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping({"/projects/{projectId}/issues", "/projects/{projectId}/issue"})
+    @PostMapping("/projects/{projectId}/issues")
     public ResponseEntity<IssueResponse> create(@PathVariable UUID projectId,
                                                 @Valid @RequestBody IssueRequest request,
                                                 @AuthenticationPrincipal UUID userId) {

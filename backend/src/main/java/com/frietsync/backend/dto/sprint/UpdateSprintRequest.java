@@ -10,5 +10,6 @@ public class UpdateSprintRequest {
     private String goal;
     private LocalDate startDate;
     private LocalDate endDate;
-    private UUID milestoneId;
+    private UUID issueId;
+    private boolean unlinkIssue;
 }

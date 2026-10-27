@@ -49,6 +49,9 @@ public class Issue extends BaseEntity {
     @Column(name = "due_date")
     private LocalDate dueDate;
 
+    @Column(name = "milestone_id")
+    private UUID milestoneId;
+
     @Column(name = "estimated_hours")
     private Double estimatedHours;
 

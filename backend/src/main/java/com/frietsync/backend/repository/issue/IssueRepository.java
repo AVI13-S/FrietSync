@@ -37,6 +37,14 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
 
     List<Issue> findByProjectId(UUID projectId);
 
+    List<Issue> findByMilestoneIdAndDeletedAtIsNull(UUID milestoneId);
+
+    List<Issue> findByMilestoneId(UUID milestoneId);
+
+    @Modifying
+    @Query("update Issue i set i.milestoneId = null where i.milestoneId = :milestoneId")
+    int clearMilestoneLink(@Param("milestoneId") UUID milestoneId);
+
     List<Issue> findByGithubIssueNumberIsNotNullAndDeletedAtIsNull();
 
     List<Issue> findByCreatedByAndDeletedAtIsNull(UUID createdBy);

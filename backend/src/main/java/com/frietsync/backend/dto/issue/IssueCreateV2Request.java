@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.time.LocalDate;
+import java.util.UUID;
 
 @Data
 public class IssueCreateV2Request {
@@ -22,6 +23,7 @@ public class IssueCreateV2Request {
     private IssuePriority priority;
     private LocalDate startDate;
     private LocalDate dueDate;
+    private UUID milestoneId;
 
     @PositiveOrZero(message = "Estimated hours cannot be negative")
     private Double estimatedHours;

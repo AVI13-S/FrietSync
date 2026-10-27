@@ -192,18 +192,13 @@ public class ProjectDashboardService {
 
     private TimelineGroupMatch findGroupForIssue(Issue issue, List<Sprint> sprints, List<Milestone> milestones,
                                                  Map<String, TimelineGroupMatch> timelineGroups) {
-        LocalDate dueDate = issue.getDueDate();
-        if (dueDate == null) {
-            return null;
-        }
         for (Sprint sprint : sprints) {
-            if ((sprint.getStartDate() != null || sprint.getEndDate() != null)
-                    && between(dueDate, sprint.getStartDate(), sprint.getEndDate())) {
+            if (issue.getId().equals(sprint.getIssueId())) {
                 return groupsFor(timelineGroups, "SPRINT", sprint.getId());
             }
         }
         for (Milestone milestone : milestones) {
-            if (milestone.getDueDate().equals(dueDate)) {
+            if (milestone.getId().equals(issue.getMilestoneId())) {
                 return groupsFor(timelineGroups, "MILESTONE", milestone.getId());
             }
         }
@@ -212,11 +207,6 @@ public class ProjectDashboardService {
 
     private TimelineGroupMatch groupsFor(Map<String, TimelineGroupMatch> timelineGroups, String type, UUID id) {
         return timelineGroups.computeIfAbsent(type + id, key -> new TimelineGroupMatch(new ArrayList<>()));
-    }
-
-    private boolean between(LocalDate date, LocalDate startDate, LocalDate endDate) {
-        return (startDate == null || !date.isBefore(startDate))
-                && (endDate == null || !date.isAfter(endDate));
     }
 
     private ProjectTimelineResponse.IssueBar toIssueBar(Issue issue) {

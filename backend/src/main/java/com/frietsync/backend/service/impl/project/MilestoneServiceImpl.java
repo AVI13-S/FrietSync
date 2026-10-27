@@ -5,15 +5,15 @@ import com.frietsync.backend.dto.project.MilestoneResponse;
 import com.frietsync.backend.dto.project.UpdateMilestoneRequest;
 import com.frietsync.backend.entity.project.Milestone;
 import com.frietsync.backend.entity.project.Project;
-import com.frietsync.backend.entity.sprint.Sprint;
-import com.frietsync.backend.entity.sprint.SprintStatus;
+import com.frietsync.backend.entity.issue.Issue;
+import com.frietsync.backend.entity.issue.IssueStatus;
 import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.exception.ForbiddenException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.repository.project.MilestoneRepository;
+import com.frietsync.backend.repository.issue.IssueRepository;
 import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
-import com.frietsync.backend.repository.sprint.SprintRepository;
 import com.frietsync.backend.service.project.MilestoneService;
 import com.frietsync.backend.service.impl.activity.ProjectActivityRecorder;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +32,7 @@ public class MilestoneServiceImpl implements MilestoneService {
     private final MilestoneRepository milestoneRepository;
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository projectMemberRepository;
-    private final SprintRepository sprintRepository;
+    private final IssueRepository issueRepository;
     private final ProjectAccess projectAccess;
     private final ProjectActivityRecorder activityRecorder;
 
@@ -88,10 +88,10 @@ public class MilestoneServiceImpl implements MilestoneService {
         }
         if (request.getDueDate() != null) {
             validateDueDate(project, request.getDueDate());
-            for (Sprint sprint : sprintRepository.findByMilestoneId(milestoneId)) {
-                if (!sprint.getEndDate().isBefore(request.getDueDate())) {
-                    throw new BadRequestException(
-                            "Sprint due date needs to be before the milestone date");
+            for (Issue issue : issueRepository.findByMilestoneIdAndDeletedAtIsNull(milestoneId)) {
+                if ((issue.getStartDate() != null && issue.getStartDate().isAfter(request.getDueDate()))
+                        || (issue.getDueDate() != null && issue.getDueDate().isAfter(request.getDueDate()))) {
+                    throw new BadRequestException("Issue dates cannot be after the milestone due date");
                 }
             }
             milestone.setDueDate(request.getDueDate());
@@ -119,21 +119,18 @@ public class MilestoneServiceImpl implements MilestoneService {
     public void delete(UUID milestoneId, UUID userId) {
         Milestone milestone = findMilestone(milestoneId);
         requireProjectManager(findProject(milestone.getProjectId()), userId);
-        List<Sprint> sprints = sprintRepository.findByMilestoneId(milestoneId);
-        for (Sprint sprint : sprints) {
-            sprint.setMilestoneId(null);
-        }
-        sprintRepository.saveAll(sprints);
+        issueRepository.clearMilestoneLink(milestoneId);
         milestoneRepository.delete(milestone);
     }
 
     private MilestoneResponse toResponse(Milestone milestone) {
-        long totalSprints = sprintRepository.countByMilestoneId(milestone.getId());
-        long completedSprints = sprintRepository.countByMilestoneIdAndStatus(
-                milestone.getId(), SprintStatus.COMPLETED);
+        List<Issue> linkedIssues = issueRepository.findByMilestoneIdAndDeletedAtIsNull(milestone.getId());
+        long totalIssues = linkedIssues.size();
+        long completedIssues = linkedIssues.stream()
+                .filter(issue -> issue.getStatus() == IssueStatus.CLOSED).count();
         double progress = 0;
-        if (totalSprints > 0) {
-            progress = completedSprints * 100.0 / totalSprints;
+        if (totalIssues > 0) {
+            progress = completedIssues * 100.0 / totalIssues;
         }
         return MilestoneResponse.fromEntity(milestone, progress);
     }
