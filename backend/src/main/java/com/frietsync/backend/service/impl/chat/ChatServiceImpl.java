@@ -208,9 +208,8 @@ public class ChatServiceImpl implements ChatService {
     @Transactional
     public ChatMessageResponse pinMessage(UUID projectId, UUID userId, UUID messageId) {
         assertProjectAccess(projectId, userId);
-        Project project = projectRepository.findByIdForUpdate(projectId)
+        projectRepository.findByIdForUpdate(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
-        assertCanPin(project, userId);
         ChatMessage message = findActiveMessage(projectId, messageId);
         if (message.getPinnedAt() == null) {
             if (chatMessageRepository.countByProjectIdAndPinnedAtIsNotNullAndDeletedFalse(projectId)
@@ -229,9 +228,6 @@ public class ChatServiceImpl implements ChatService {
     @Transactional
     public ChatMessageResponse unpinMessage(UUID projectId, UUID userId, UUID messageId) {
         assertProjectAccess(projectId, userId);
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
-        assertCanPin(project, userId);
         ChatMessage message = findActiveMessage(projectId, messageId);
         if (message.getPinnedAt() != null) {
             message.setPinnedAt(null);
@@ -247,16 +243,6 @@ public class ChatServiceImpl implements ChatService {
         assertProjectAccess(projectId, userId);
         return toResponses(chatMessageRepository
                 .findByProjectIdAndPinnedAtIsNotNullAndDeletedFalseOrderByPinnedAtDesc(projectId));
-    }
-
-    private void assertCanPin(Project project, UUID userId) {
-        boolean allowed = userId.equals(project.getCreatedBy())
-                || userId.equals(project.getAdminId())
-                || userId.equals(project.getProjectManagerId())
-                || userId.equals(project.getTeamLeadId());
-        if (!allowed) {
-            throw new ForbiddenException("Only project managers and leads can pin messages");
-        }
     }
 
     private ChatMessage findActiveMessage(UUID projectId, UUID messageId) {
