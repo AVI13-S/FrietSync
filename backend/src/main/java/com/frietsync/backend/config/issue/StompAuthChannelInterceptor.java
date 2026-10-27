@@ -1,6 +1,11 @@
 package com.frietsync.backend.config.issue;
 
+import com.frietsync.backend.config.security.JwtUtil;
+import com.frietsync.backend.entity.user.User;
+import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
@@ -26,6 +31,8 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
             Pattern.compile("^/topic/issues/([0-9a-fA-F\\-]{36})/history$");
 
     private final ProjectAccess access;
+    private final JwtUtil jwtUtil;
+    private final UserRepository userRepository;
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
@@ -61,6 +68,18 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
     }
 
     private UUID userIdFromToken(String token) {
-        throw new MessagingException("JWT validation not wired yet");
+        try {
+            Claims claims = jwtUtil.validateAndParse(token);
+            UUID userId = UUID.fromString(claims.getSubject());
+            Integer tokenPasswordVersion = claims.get("passwordVersion", Integer.class);
+            User user = userRepository.findById(userId).orElse(null);
+            if (user == null || tokenPasswordVersion == null
+                    || !tokenPasswordVersion.equals(user.getPasswordVersion())) {
+                throw new MessagingException("Invalid token");
+            }
+            return userId;
+        } catch (JwtException | IllegalArgumentException e) {
+            throw new MessagingException("Invalid token");
+        }
     }
 }
