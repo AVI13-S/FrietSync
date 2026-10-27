@@ -20,6 +20,7 @@ import com.frietsync.backend.entity.issue.IssueStatus;
 import com.frietsync.backend.entity.notification.NotificationType;
 import com.frietsync.backend.entity.project.Label;
 import com.frietsync.backend.entity.project.Project;
+import com.frietsync.backend.entity.project.Milestone;
 import com.frietsync.backend.entity.user.Role;
 import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.exception.ForbiddenException;
@@ -31,9 +32,11 @@ import com.frietsync.backend.repository.issue.IssueLabelRepository;
 import com.frietsync.backend.repository.issue.IssueRepository;
 import com.frietsync.backend.repository.project.LabelRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
+import com.frietsync.backend.repository.project.MilestoneRepository;
 import com.frietsync.backend.repository.project.ReleaseIssueRepository;
 import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
+import com.frietsync.backend.service.impl.project.MilestoneCompletionService;
 import com.frietsync.backend.service.issue.IssueAttachmentService;
 import com.frietsync.backend.service.issue.IssueService;
 import com.frietsync.backend.service.integration.GitHubIssueLinkService;
@@ -45,6 +48,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import com.frietsync.backend.repository.issue.IssueLinkRepository;
+import com.frietsync.backend.repository.sprint.SprintRepository;
 
 import java.time.Instant;
 import java.util.List;
@@ -72,6 +76,9 @@ public class IssueServiceImpl implements IssueService {
     private final IssueMapper mapper;
     private final IssueHistoryRecorder history;
     private final IssueLinkRepository issueLinkRepository;
+    private final SprintRepository sprintRepository;
+    private final MilestoneRepository milestoneRepository;
+    private final MilestoneCompletionService milestoneCompletionService;
     private final ReleaseIssueRepository releaseIssueRepository;
     private final GitHubIssueLinkService githubIssueLinkService;
     private final NotificationPublisher notificationPublisher;
@@ -79,7 +86,7 @@ public class IssueServiceImpl implements IssueService {
     @Override
     public IssueResponse create(UUID projectId, IssueRequest r, UUID userId) {
         Issue issue = createIssue(projectId, r.getTitle(), r.getDescription(), r.getPriority(), r.getStartDate(),
-                r.getDueDate(), r.getEstimatedHours(), userId);
+                r.getDueDate(), r.getEstimatedHours(), r.getMilestoneId(), userId);
         if (r.getGithubIssueNumber() != null) {
             return githubIssueLinkService.link(issue.getId(), r.getGithubIssueNumber(), userId);
         }
@@ -99,7 +106,8 @@ public class IssueServiceImpl implements IssueService {
             throw new BadRequestException("githubIssueNumber is only allowed for LINK_EXISTING");
         }
         Issue issue = createIssue(projectId, request.getTitle(), request.getDescription(), request.getPriority(),
-                request.getStartDate(), request.getDueDate(), request.getEstimatedHours(), userId);
+                request.getStartDate(), request.getDueDate(), request.getEstimatedHours(),
+                request.getMilestoneId(), userId);
         return switch (action) {
             case LOCAL -> mapper.toResponse(issue);
             case LINK_EXISTING -> githubIssueLinkService.link(issue.getId(), request.getGithubIssueNumber(), userId);
@@ -109,7 +117,7 @@ public class IssueServiceImpl implements IssueService {
 
     private Issue createIssue(UUID projectId, String title, String description, IssuePriority priority,
                               java.time.LocalDate startDate, java.time.LocalDate dueDate,
-                              Double estimatedHours, UUID userId) {
+                              Double estimatedHours, UUID milestoneId, UUID userId) {
         Project project = projectRepository.findByIdForUpdate(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
         Role role = access.requireMember(project, userId);
@@ -120,6 +128,7 @@ public class IssueServiceImpl implements IssueService {
                     "Only the project admin, project manager, team lead, or a reporter can create issues");
         }
         validateIssueDates(project, startDate, dueDate);
+        validateMilestone(projectId, milestoneId, startDate, dueDate);
         project.setIssueCounter(project.getIssueCounter() + 1);
         projectRepository.save(project);
 
@@ -131,6 +140,7 @@ public class IssueServiceImpl implements IssueService {
         issue.setPriority(priority != null ? priority : IssuePriority.MEDIUM);
         issue.setStartDate(startDate);
         issue.setDueDate(dueDate);
+        issue.setMilestoneId(milestoneId);
         issue.setEstimatedHours(estimatedHours);
         issue.setCreatedBy(userId);
         issueRepository.save(issue);
@@ -193,8 +203,16 @@ public class IssueServiceImpl implements IssueService {
 
         java.time.LocalDate updatedStartDate = r.getStartDate() == null ? issue.getStartDate() : r.getStartDate();
         java.time.LocalDate updatedDueDate = r.getDueDate() == null ? issue.getDueDate() : r.getDueDate();
+        UUID previousMilestoneId = issue.getMilestoneId();
+        UUID updatedMilestoneId = r.isUnlinkMilestone() ? null
+                : r.getMilestoneId() == null ? previousMilestoneId : r.getMilestoneId();
         if (r.getStartDate() != null || r.getDueDate() != null) {
             validateIssueDates(project, updatedStartDate, updatedDueDate);
+            validateLinkedSprintDates(issueId, updatedStartDate, updatedDueDate);
+        }
+        if (r.getMilestoneId() != null || r.isUnlinkMilestone()
+                || r.getStartDate() != null || r.getDueDate() != null) {
+            validateMilestone(issue.getProjectId(), updatedMilestoneId, updatedStartDate, updatedDueDate);
         }
 
         if (r.getTitle() != null) {
@@ -221,12 +239,20 @@ public class IssueServiceImpl implements IssueService {
             track(issueId, userId, "dueDate", issue.getDueDate(), r.getDueDate());
             issue.setDueDate(r.getDueDate());
         }
+        if (!Objects.equals(previousMilestoneId, updatedMilestoneId)) {
+            track(issueId, userId, "milestoneId", previousMilestoneId, updatedMilestoneId);
+            issue.setMilestoneId(updatedMilestoneId);
+        }
         if (r.getEstimatedHours() != null) {
             track(issueId, userId, "estimatedHours", issue.getEstimatedHours(), r.getEstimatedHours());
             issue.setEstimatedHours(r.getEstimatedHours());
         }
 
         issueRepository.save(issue);
+        if (!Objects.equals(previousMilestoneId, updatedMilestoneId)) {
+            milestoneCompletionService.refresh(previousMilestoneId, userId);
+            milestoneCompletionService.refresh(updatedMilestoneId, userId);
+        }
         return mapper.toResponse(issue);
     }
 
@@ -259,6 +285,7 @@ public class IssueServiceImpl implements IssueService {
         }
 
         issueRepository.save(issue);
+        milestoneCompletionService.refresh(issue.getMilestoneId(), userId);
         if (newStatus == IssueStatus.RESOLVED || newStatus == IssueStatus.CLOSED) {
             requestRepository.deleteByIssueId(issueId);
         }
@@ -287,9 +314,11 @@ public class IssueServiceImpl implements IssueService {
             requestRepository.deleteByIssueId(issue.getId());
             releaseIssueRepository.deleteByIssueId(issue.getId());
             issueLinkRepository.deleteBySourceIssueIdOrTargetIssueId(issue.getId(), issue.getId());
+            sprintRepository.clearIssueLink(issue.getId());
             issue.setDeletedAt(Instant.now());
             issueRepository.save(issue);
             history.record(issue.getId(), userId, IssueHistoryAction.DELETED);
+            milestoneCompletionService.refresh(issue.getMilestoneId(), userId);
         }
     }
 
@@ -312,6 +341,7 @@ public class IssueServiceImpl implements IssueService {
         issue.setStatus(IssueStatus.RESOLVED);
         issue.setResolvedAt(Instant.now());
         issueRepository.save(issue);
+        milestoneCompletionService.refresh(issue.getMilestoneId(), userId);
         requestRepository.deleteByIssueId(issueId);
 
         history.record(issueId, userId, IssueHistoryAction.RESOLVED, "status", old, issue.getStatus());
@@ -352,6 +382,7 @@ public class IssueServiceImpl implements IssueService {
             issue.setResolvedAt(null);
         }
         issueRepository.save(issue);
+        milestoneCompletionService.refresh(issue.getMilestoneId(), userId);
         if (approve) {
             requestRepository.deleteByIssueId(issueId);
         }
@@ -486,6 +517,7 @@ public class IssueServiceImpl implements IssueService {
         requestRepository.deleteByIssueId(id);
         releaseIssueRepository.deleteByIssueId(id);
         issueLinkRepository.deleteBySourceIssueIdOrTargetIssueId(id, id);
+        sprintRepository.clearIssueLink(id);
         historyRepository.deleteByIssueId(id);
         issueRepository.delete(issue);
     }
@@ -509,6 +541,33 @@ public class IssueServiceImpl implements IssueService {
             if (dueDate != null && dueDate.isAfter(project.getDeadline())) {
                 throw new BadRequestException("Issue due date cannot be after the project deadline");
             }
+        }
+    }
+
+    private void validateLinkedSprintDates(UUID issueId, java.time.LocalDate startDate, java.time.LocalDate dueDate) {
+        for (var task : sprintRepository.findByIssueId(issueId)) {
+            if (startDate != null && task.getStartDate() != null && task.getStartDate().isBefore(startDate)) {
+                throw new BadRequestException("Issue start date cannot be after a linked task start date");
+            }
+            if (dueDate != null && task.getEndDate() != null && task.getEndDate().isAfter(dueDate)) {
+                throw new BadRequestException("Issue due date cannot be before a linked task end date");
+            }
+        }
+    }
+
+    private void validateMilestone(UUID projectId, UUID milestoneId, java.time.LocalDate startDate,
+                                   java.time.LocalDate dueDate) {
+        if (milestoneId == null) return;
+        Milestone milestone = milestoneRepository.findById(milestoneId)
+                .orElseThrow(() -> new ResourceNotFoundException("Milestone not found"));
+        if (!projectId.equals(milestone.getProjectId())) {
+            throw new BadRequestException("Milestone must belong to the issue's project");
+        }
+        if (startDate != null && startDate.isAfter(milestone.getDueDate())) {
+            throw new BadRequestException("Issue start date cannot be after the milestone due date");
+        }
+        if (dueDate != null && dueDate.isAfter(milestone.getDueDate())) {
+            throw new BadRequestException("Issue due date cannot be after the milestone due date");
         }
     }
 

@@ -60,6 +60,7 @@ public class IssueMapper {
                 .priority(i.getPriority())
                 .startDate(i.getStartDate())
                 .dueDate(i.getDueDate())
+                .milestoneId(i.getMilestoneId())
                 .estimatedHours(i.getEstimatedHours())
                 .createdBy(i.getCreatedBy())
                 .createdByName(names.get(i.getCreatedBy()))

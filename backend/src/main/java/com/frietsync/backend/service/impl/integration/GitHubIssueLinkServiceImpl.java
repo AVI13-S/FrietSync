@@ -22,6 +22,7 @@ import com.frietsync.backend.service.integration.GitHubIssueLinkService;
 import com.frietsync.backend.service.integration.GitHubTokenCipher;
 import com.frietsync.backend.service.impl.issue.IssueMapper;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
+import com.frietsync.backend.service.impl.project.MilestoneCompletionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,6 +47,7 @@ public class GitHubIssueLinkServiceImpl implements GitHubIssueLinkService {
     private final GitHubApiClient githubApi;
     private final ProjectAccess projectAccess;
     private final IssueMapper issueMapper;
+    private final MilestoneCompletionService milestoneCompletionService;
 
     @Override
     @Transactional
@@ -130,6 +132,7 @@ public class GitHubIssueLinkServiceImpl implements GitHubIssueLinkService {
         if (issue.getGithubIssueNumber() != null) {
             refresh(issue, userId);
         }
+        milestoneCompletionService.refresh(issue.getMilestoneId(), userId);
         return issueMapper.toResponse(issueRepository.save(issue));
     }
 
@@ -140,6 +143,7 @@ public class GitHubIssueLinkServiceImpl implements GitHubIssueLinkService {
         for (Issue issue : issueRepository.findByGithubIssueNumberIsNotNullAndDeletedAtIsNull()) {
             try {
                 refresh(issue, null);
+                milestoneCompletionService.refresh(issue.getMilestoneId(), null);
             } catch (RuntimeException ignored) {
             }
         }
@@ -193,6 +197,7 @@ public class GitHubIssueLinkServiceImpl implements GitHubIssueLinkService {
                 issue.setResolvedAt(null);
             }
             issueRepository.save(issue);
+            milestoneCompletionService.refresh(issue.getMilestoneId(), preferredUserId);
         } catch (RestClientException ignored) {
         }
     }

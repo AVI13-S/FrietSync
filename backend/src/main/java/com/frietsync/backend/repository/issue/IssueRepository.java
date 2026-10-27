@@ -6,12 +6,18 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.UUID;
 
 public interface IssueRepository extends JpaRepository<Issue, UUID> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select i from Issue i where i.id = :issueId")
+    java.util.Optional<Issue> findByIdForUpdate(@Param("issueId") UUID issueId);
 
     Page<Issue> findByProjectIdAndDeletedAtIsNull(UUID projectId, Pageable pageable);
 
@@ -36,6 +42,14 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
     List<Issue> findByProjectIdOrderByCreatedAtDesc(UUID projectId);
 
     List<Issue> findByProjectId(UUID projectId);
+
+    List<Issue> findByMilestoneIdAndDeletedAtIsNull(UUID milestoneId);
+
+    List<Issue> findByMilestoneId(UUID milestoneId);
+
+    @Modifying
+    @Query("update Issue i set i.milestoneId = null where i.milestoneId = :milestoneId")
+    int clearMilestoneLink(@Param("milestoneId") UUID milestoneId);
 
     List<Issue> findByGithubIssueNumberIsNotNullAndDeletedAtIsNull();
 

@@ -57,12 +57,22 @@ public class IssueAssignmentServiceImpl implements IssueAssignmentService {
 
     @Override
     public IssueResponse assign(UUID issueId, AssignIssueRequest r, UUID userId) {
-        Issue issue = access.issue(issueId);
+        Issue issue = issueRepository.findByIdForUpdate(issueId)
+                .orElseThrow(() -> new ResourceNotFoundException("Issue not found"));
         Project project = access.project(issue.getProjectId());
         access.require(project, userId, Role.PROJECT_MANAGER, Role.TEAM_LEAD);
         ensureAssignable(issue);
 
+        if (r.getUserIds() == null) {
+            throw new BadRequestException("userIds is required; use an empty list to unassign everyone");
+        }
         Set<UUID> target = new LinkedHashSet<>(r.getUserIds());
+        if (target.size() != r.getUserIds().size()) {
+            throw new BadRequestException("Assignee IDs must be unique");
+        }
+        if (target.size() > 10) {
+            throw new BadRequestException("An issue can have at most 10 assignees");
+        }
         for (UUID uid : target) {
             access.requireWorkspaceAndActive(project, uid);
             if (access.roleOf(project, uid) != Role.CONTRIBUTOR) {
@@ -115,6 +125,9 @@ public class IssueAssignmentServiceImpl implements IssueAssignmentService {
         ensureAssignable(issue);
         if (assigneeRepository.existsByIssueIdAndUserId(issueId, userId)) {
             throw new BadRequestException("You are already assigned to this issue");
+        }
+        if (assigneeRepository.findByIssueId(issueId).size() >= 10) {
+            throw new BadRequestException("This issue already has the maximum of 10 assignees");
         }
 
         IssueAssignmentRequest req = requestRepository.findByIssueIdAndUserId(issueId, userId).orElse(null);
@@ -173,7 +186,8 @@ public class IssueAssignmentServiceImpl implements IssueAssignmentService {
 
     @Override
     public AssignmentRequestResponse decide(UUID issueId, AssignmentDecisionRequest d, UUID userId) {
-        Issue issue = access.issue(issueId);
+        Issue issue = issueRepository.findByIdForUpdate(issueId)
+                .orElseThrow(() -> new ResourceNotFoundException("Issue not found"));
         Project project = access.project(issue.getProjectId());
         access.require(project, userId, Role.PROJECT_MANAGER, Role.TEAM_LEAD);
 
@@ -194,6 +208,9 @@ public class IssueAssignmentServiceImpl implements IssueAssignmentService {
                 throw new BadRequestException("Only project contributors can be assigned to issues");
             }
             if (!assigneeRepository.existsByIssueIdAndUserId(issueId, req.getUserId())) {
+                if (assigneeRepository.findByIssueId(issueId).size() >= 10) {
+                    throw new BadRequestException("This issue already has the maximum of 10 assignees");
+                }
                 addAssignee(issueId, req.getUserId(), userId);
                 notificationPublisher.publish(req.getUserId(), NotificationType.ISSUE_ASSIGNED,
                         "Issue assigned to you", "You were assigned to issue #" + issue.getIssueNumber()

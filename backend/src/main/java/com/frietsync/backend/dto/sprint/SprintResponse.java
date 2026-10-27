@@ -12,8 +12,9 @@ import java.util.UUID;
 public class SprintResponse {
     private UUID id;
     private UUID projectId;
-    private UUID milestoneId;
-    private String milestoneName;
+    private UUID issueId;
+    private String issueTitle;
+    private Integer issueNumber;
     private Integer sprintNumber;
     private String name;
     private String goal;
@@ -27,13 +28,15 @@ public class SprintResponse {
     private Instant createdAt;
     private Instant updatedAt;
 
-    public static SprintResponse fromEntity(Sprint sprint, String milestoneName, String assignedContributorName,
+    public static SprintResponse fromEntity(Sprint sprint, String issueTitle, Integer issueNumber,
+                                            String assignedContributorName,
                                             String createdByName) {
         SprintResponse response = new SprintResponse();
         response.setId(sprint.getId());
         response.setProjectId(sprint.getProjectId());
-        response.setMilestoneId(sprint.getMilestoneId());
-        response.setMilestoneName(milestoneName);
+        response.setIssueId(sprint.getIssueId());
+        response.setIssueTitle(issueTitle);
+        response.setIssueNumber(issueNumber);
         response.setSprintNumber(sprint.getSprintNumber());
         response.setName(sprint.getName());
         response.setGoal(sprint.getGoal());

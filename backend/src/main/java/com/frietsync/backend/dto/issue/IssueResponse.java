@@ -23,6 +23,7 @@ public class IssueResponse {
     private IssuePriority priority;
     private LocalDate startDate;
     private LocalDate dueDate;
+    private UUID milestoneId;
     private Double estimatedHours;
     private UUID createdBy;
     private String createdByName;

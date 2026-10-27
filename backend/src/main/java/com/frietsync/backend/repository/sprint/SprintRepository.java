@@ -6,6 +6,7 @@ import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
@@ -19,17 +20,19 @@ public interface SprintRepository extends JpaRepository<Sprint, UUID> {
 
     List<Sprint> findByProjectId(UUID projectId);
 
-    List<Sprint> findByMilestoneId(UUID milestoneId);
+    List<Sprint> findByIssueId(UUID issueId);
+
+    List<Sprint> findByIssueIdIn(List<UUID> issueIds);
+
+    @Modifying
+    @Query("update Sprint sprint set sprint.issueId = null where sprint.issueId = :issueId")
+    void clearIssueLink(@Param("issueId") UUID issueId);
 
     List<Sprint> findByAssignedContributorId(UUID assignedContributorId);
 
     long countByProjectId(UUID projectId);
 
     long countByProjectIdAndStatus(UUID projectId, SprintStatus status);
-
-    long countByMilestoneId(UUID milestoneId);
-
-    long countByMilestoneIdAndStatus(UUID milestoneId, SprintStatus status);
 
     boolean existsByProjectIdAndAssignedContributorId(UUID projectId, UUID assignedContributorId);
 
