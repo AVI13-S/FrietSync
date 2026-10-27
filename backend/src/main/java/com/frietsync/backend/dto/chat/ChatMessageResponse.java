@@ -20,7 +20,10 @@ public record ChatMessageResponse(
         String replyToContent,
         List<UUID> mentionedUserIds,
         boolean deleted,
-        Instant editedAt
+        Instant editedAt,
+        boolean pinned,
+        Instant pinnedAt,
+        UUID pinnedBy
 ) {
 
     public static ChatMessageResponse fromEntity(ChatMessage message) {
@@ -30,6 +33,7 @@ public record ChatMessageResponse(
     public static ChatMessageResponse fromEntity(
             ChatMessage message, List<ChatAttachmentResponse> attachments) {
         boolean deleted = message.isDeleted();
+        boolean pinned = !deleted && message.getPinnedAt() != null;
         UUID replyToId = null;
         String replyToSenderName = null;
         String replyToContent = null;
@@ -57,7 +61,10 @@ public record ChatMessageResponse(
                 replyToContent,
                 deleted ? new ArrayList<>() : new ArrayList<>(message.getMentionedUserIds()),
                 deleted,
-                message.getEditedAt()
+                message.getEditedAt(),
+                pinned,
+                pinned ? message.getPinnedAt() : null,
+                pinned ? message.getPinnedBy() : null
         );
     }
 }

@@ -42,6 +42,10 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, UUID> 
             Pageable pageable);
 
 
+    List<ChatMessage> findByProjectIdAndPinnedAtIsNotNullAndDeletedFalseOrderByPinnedAtDesc(UUID projectId);
+
+    long countByProjectIdAndPinnedAtIsNotNullAndDeletedFalse(UUID projectId);
+
     @Modifying
     @Query("delete from ChatMessage m where m.projectId = :projectId")
     void deleteByProjectId(@Param("projectId") UUID projectId);

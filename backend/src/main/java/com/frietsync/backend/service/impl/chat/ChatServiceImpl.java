@@ -46,6 +46,7 @@ import java.util.UUID;
 public class ChatServiceImpl implements ChatService {
 
     private static final int MAX_MESSAGE_LENGTH = 2000;
+    private static final int MAX_PINNED_MESSAGES = 10;
 
     private final ChatMessageRepository chatMessageRepository;
     private final ChatAttachmentRepository chatAttachmentRepository;
@@ -201,6 +202,61 @@ public class ChatServiceImpl implements ChatService {
         message.setDeletedBy(userId);
         ChatMessage saved = chatMessageRepository.save(message);
         return ChatMessageResponse.fromEntity(saved, List.of());
+    }
+
+    @Override
+    @Transactional
+    public ChatMessageResponse pinMessage(UUID projectId, UUID userId, UUID messageId) {
+        assertProjectAccess(projectId, userId);
+        Project project = projectRepository.findByIdForUpdate(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
+        assertCanPin(project, userId);
+        ChatMessage message = findActiveMessage(projectId, messageId);
+        if (message.getPinnedAt() == null) {
+            if (chatMessageRepository.countByProjectIdAndPinnedAtIsNotNullAndDeletedFalse(projectId)
+                    >= MAX_PINNED_MESSAGES) {
+                throw new BadRequestException("A project can have up to " + MAX_PINNED_MESSAGES
+                        + " pinned messages. Unpin one first");
+            }
+            message.setPinnedAt(Instant.now());
+            message.setPinnedBy(userId);
+            message = chatMessageRepository.save(message);
+        }
+        return toResponses(List.of(message)).get(0);
+    }
+
+    @Override
+    @Transactional
+    public ChatMessageResponse unpinMessage(UUID projectId, UUID userId, UUID messageId) {
+        assertProjectAccess(projectId, userId);
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
+        assertCanPin(project, userId);
+        ChatMessage message = findActiveMessage(projectId, messageId);
+        if (message.getPinnedAt() != null) {
+            message.setPinnedAt(null);
+            message.setPinnedBy(null);
+            message = chatMessageRepository.save(message);
+        }
+        return toResponses(List.of(message)).get(0);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ChatMessageResponse> getPinnedMessages(UUID projectId, UUID userId) {
+        assertProjectAccess(projectId, userId);
+        return toResponses(chatMessageRepository
+                .findByProjectIdAndPinnedAtIsNotNullAndDeletedFalseOrderByPinnedAtDesc(projectId));
+    }
+
+    private void assertCanPin(Project project, UUID userId) {
+        boolean allowed = userId.equals(project.getCreatedBy())
+                || userId.equals(project.getAdminId())
+                || userId.equals(project.getProjectManagerId())
+                || userId.equals(project.getTeamLeadId());
+        if (!allowed) {
+            throw new ForbiddenException("Only project managers and leads can pin messages");
+        }
     }
 
     private ChatMessage findActiveMessage(UUID projectId, UUID messageId) {

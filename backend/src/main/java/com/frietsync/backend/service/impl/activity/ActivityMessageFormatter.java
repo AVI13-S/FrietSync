@@ -29,7 +29,7 @@ public final class ActivityMessageFormatter {
 
     public static String forIssue(IssueHistory entry, int issueNumber, String issueTitle, String actorName) {
         String actor = actor(actorName);
-        String issue = issueNumber > 0 ? "issue #" + issueNumber : "issue";
+        String issue = issueNumber > 0 ? "issue #" + issueNumber : "com/frietsync/backend/config/issue";
         if (issueTitle != null && !issueTitle.isBlank()) {
             issue += ": " + issueTitle;
         }
