@@ -4,6 +4,7 @@ import com.frietsync.backend.dto.issue.DependencyGraphResponse;
 import com.frietsync.backend.dto.issue.IssueLinkRequest;
 import com.frietsync.backend.dto.issue.IssueLinkResponse;
 import com.frietsync.backend.dto.issue.IssueSummaryResponse;
+import com.frietsync.backend.dto.issue.LinkedIssueResponse;
 import com.frietsync.backend.entity.issue.Issue;
 import com.frietsync.backend.entity.issue.IssueHistoryAction;
 import com.frietsync.backend.entity.issue.IssueLink;
@@ -69,11 +70,38 @@ public class IssueLinkServiceImpl implements IssueLinkService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<IssueLinkResponse> list(UUID issueId, UUID userId) {
+    public List<LinkedIssueResponse> list(UUID issueId, UUID userId) {
         Issue issue = access.issue(issueId);
         access.requireMember(access.project(issue.getProjectId()), userId);
-        return toLinkResponses(linkRepository
-                .findBySourceIssueIdOrTargetIssueIdOrderByCreatedAtDesc(issueId, issueId));
+        List<IssueLink> links = linkRepository
+                .findBySourceIssueIdOrTargetIssueIdOrderByCreatedAtDesc(issueId, issueId);
+
+        List<UUID> otherIssueIds = links.stream()
+                .map(link -> link.getSourceIssueId().equals(issueId)
+                        ? link.getTargetIssueId()
+                        : link.getSourceIssueId())
+                .distinct()
+                .toList();
+
+        Map<UUID, Issue> issueMap = issueRepository.findAllById(otherIssueIds).stream()
+                .collect(Collectors.toMap(Issue::getId, i -> i));
+
+        return links.stream()
+                .map(link -> {
+                    UUID otherId = link.getSourceIssueId().equals(issueId)
+                            ? link.getTargetIssueId()
+                            : link.getSourceIssueId();
+                    Issue other = issueMap.get(otherId);
+                    if (other == null) return null;
+                    return LinkedIssueResponse.builder()
+                            .linkId(link.getId())
+                            .issueId(other.getId())
+                            .issueNumber(other.getIssueNumber())
+                            .issueTitle(other.getTitle())
+                            .build();
+                })
+                .filter(java.util.Objects::nonNull)
+                .toList();
     }
 
     @Override

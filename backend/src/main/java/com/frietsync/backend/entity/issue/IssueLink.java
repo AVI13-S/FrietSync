@@ -5,7 +5,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -19,8 +18,7 @@ import java.util.UUID;
                 @Index(name = "idx_issue_links_project", columnList = "project_id"),
                 @Index(name = "idx_issue_links_source", columnList = "source_issue_id"),
                 @Index(name = "idx_issue_links_target", columnList = "target_issue_id")
-        },
-        uniqueConstraints = @UniqueConstraint(columnNames = {"source_issue_id", "target_issue_id", "link_type"}))
+        })
 public class IssueLink extends BaseEntity {
 
     @Column(name = "project_id", nullable = false, updatable = false)
@@ -31,9 +29,6 @@ public class IssueLink extends BaseEntity {
 
     @Column(name = "target_issue_id", nullable = false, updatable = false)
     private UUID targetIssueId;
-
-    @Column(name = "link_type", nullable = false, length = 20)
-    private String linkType = "RELATES_TO";
 
     @Column(name = "created_by", nullable = false, updatable = false)
     private UUID createdBy;
