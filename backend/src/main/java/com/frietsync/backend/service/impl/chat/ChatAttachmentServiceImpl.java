@@ -8,6 +8,7 @@ import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.repository.chat.ChatAttachmentRepository;
 import com.frietsync.backend.service.chat.ChatAttachmentService;
 import com.frietsync.backend.service.chat.ChatAccessService;
+import com.frietsync.backend.service.impl.issue.S3ObjectCleanupService;
 import com.frietsync.backend.service.impl.storage.S3UploadValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +18,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -44,6 +47,7 @@ public class ChatAttachmentServiceImpl implements ChatAttachmentService {
     private final ChatAttachmentRepository repository;
     private final ChatAccessService chatAccessService;
     private final S3Client s3Client;
+    private final S3ObjectCleanupService cleanupService;
 
     @Value("${aws.s3.bucket:}")
     private String bucketName;
@@ -73,6 +77,7 @@ public class ChatAttachmentServiceImpl implements ChatAttachmentService {
             log.error("Could not read chat attachment for S3 upload", exception);
             throw new IllegalStateException("Could not read the uploaded file");
         }
+        deleteS3ObjectOnRollback(key);
 
         ChatAttachment attachment = new ChatAttachment();
         attachment.setProjectId(projectId);
@@ -142,8 +147,33 @@ public class ChatAttachmentServiceImpl implements ChatAttachmentService {
         }
     }
 
+    @Override
+    public void deleteAllForProject(UUID projectId) {
+        List<ChatAttachment> all = repository.findByProjectId(projectId);
+        all.forEach(a -> {
+            if (a.getStorageKey() != null && !a.getStorageKey().isBlank()) {
+                cleanupService.enqueue(bucketName, a.getStorageKey());
+            }
+        });
+        repository.deleteAll(all);
+    }
+
+    private void deleteS3ObjectOnRollback(String key) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status != STATUS_COMMITTED) {
+                    cleanupService.enqueue(bucketName, key);
+                }
+            }
+        });
+    }
+
     private String sanitize(String original) {
-        String name = original == null ? "" : original.replaceAll("[\\\\/\\r\\n\\\"]", "_").trim();
+        String name = original == null ? "" : original.replaceAll("[\\\\/\\r\\n\"]", "_").trim();
         if (name.isEmpty()) {
             return "file";
         }

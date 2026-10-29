@@ -98,6 +98,7 @@ public class ProjectServiceImpl implements ProjectService {
     private final ProjectAccess projectAccess;
     private final NotificationPublisher notificationPublisher;
     private final ProfilePictureUrlService profilePictureUrlService;
+    private final com.frietsync.backend.service.chat.ChatAttachmentService chatAttachmentService;
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
     private final com.frietsync.backend.service.impl.issue.S3ObjectCleanupService cleanupService;
@@ -316,6 +317,7 @@ public class ProjectServiceImpl implements ProjectService {
         projectDocumentRepository.deleteByProjectId(projectId);
         enqueueStoredFileDeletion(project.getProfilePictureKey());
         chatMessageRepository.deleteByProjectId(projectId);
+        chatAttachmentService.deleteAllForProject(projectId);
         meetingAttendeeRepository.deleteByProjectId(projectId);
         meetingRepository.deleteByProjectId(projectId);
         releaseService.deleteAllForProject(projectId);

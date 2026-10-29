@@ -19,4 +19,6 @@ public interface ChatAttachmentRepository extends JpaRepository<ChatAttachment, 
 
     Page<ChatAttachment> findByProjectIdAndMessageIdIsNotNullOrderByCreatedAtDescIdDesc(
             UUID projectId, Pageable pageable);
+
+    List<ChatAttachment> findByProjectId(UUID projectId);
 }

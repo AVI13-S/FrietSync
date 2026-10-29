@@ -18,5 +18,7 @@ public interface ChatAttachmentService {
 
     AttachmentFile download(UUID projectId, UUID attachmentId, UUID userId);
 
+    void deleteAllForProject(UUID projectId);
+
     record AttachmentFile(String fileName, String contentType, Resource resource) { }
 }
