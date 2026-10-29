@@ -4,6 +4,7 @@ import com.frietsync.backend.config.call.JanusConfig;
 import com.frietsync.backend.service.call.JanusService;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -15,6 +16,7 @@ import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class JanusServiceImpl implements JanusService {
 
@@ -44,6 +46,10 @@ public class JanusServiceImpl implements JanusService {
             room.put("sampling_rate", 16000);
             room.put("record", false);
             room.put("audiolevel_event", true);
+
+            if (hasText(janusConfig.adminKey())) {
+                room.put("admin_key", janusConfig.adminKey());
+            }
 
             if (hasText(janusConfig.roomSecret())) {
                 room.put("secret", janusConfig.roomSecret());
@@ -85,6 +91,14 @@ public class JanusServiceImpl implements JanusService {
         try {
             long handleId = attachAudioBridge(sessionId);
 
+            Map<String, Object> existenceRequest = new HashMap<>();
+            existenceRequest.put("request", "exists");
+            existenceRequest.put("room", roomId);
+
+            if (!roomExists(sessionId, handleId, existenceRequest, roomId)) {
+                return;
+            }
+
             Map<String, Object> body = new HashMap<>();
             body.put("request", "destroy");
             body.put("room", roomId);
@@ -114,6 +128,24 @@ public class JanusServiceImpl implements JanusService {
         } finally {
             destroySession(sessionId);
         }
+    }
+
+    private boolean roomExists(long sessionId, long handleId, Map<String, Object> request, long roomId) {
+        JsonNode response = post(
+                "/%d/%d".formatted(sessionId, handleId),
+                Map.of(
+                        "janus", "message",
+                        "transaction", transaction(),
+                        "body", request
+                )
+        );
+        JsonNode data = response.path("plugindata").path("data");
+        if (!"success".equals(data.path("audiobridge").asText())
+                || data.path("room").asLong() != roomId
+                || !data.path("exists").isBoolean()) {
+            throw new IllegalStateException("Janus returned an invalid room-existence response: " + response);
+        }
+        return data.path("exists").asBoolean();
     }
 
     private long createSession() {
@@ -210,6 +242,7 @@ public class JanusServiceImpl implements JanusService {
                     )
             );
         } catch (RuntimeException exception) {
+            log.warn("Could not destroy Janus session {}", sessionId, exception);
         }
     }
 

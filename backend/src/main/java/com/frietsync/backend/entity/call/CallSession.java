@@ -36,6 +36,10 @@ public class CallSession {
     @Column(name = "ended_at")
     private Instant endedAt;
 
+    @Column(name = "janus_room_destroyed", nullable = false,
+            columnDefinition = "boolean not null default false")
+    private boolean janusRoomDestroyed;
+
     @PrePersist
     public void onCreate() {
         if (startedAt == null) {

@@ -17,15 +17,19 @@ import com.frietsync.backend.service.call.JanusService;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Instant;
 import java.util.UUID;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class CallServiceImpl implements CallService {
 
@@ -35,6 +39,7 @@ public class CallServiceImpl implements CallService {
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final CallRoomCleanupService callRoomCleanupService;
 
     @Override
     @Transactional
@@ -54,27 +59,17 @@ public class CallServiceImpl implements CallService {
         }
 
         long roomId = janusService.createRoom();
+        cleanupRoomIfTransactionRollsBack(roomId);
 
-        try {
-            CallSession call = new CallSession();
-            call.setProjectId(projectId);
-            call.setInitiatedBy(userId);
-            call.setRoomId(roomId);
-            call.setStatus(CallSession.CallStatus.ACTIVE);
+        CallSession call = new CallSession();
+        call.setProjectId(projectId);
+        call.setInitiatedBy(userId);
+        call.setRoomId(roomId);
+        call.setStatus(CallSession.CallStatus.ACTIVE);
 
-            CallSession savedCall = callSessionRepository.save(call);
-            publishEvent(project, savedCall, CallEvent.Type.STARTED, userId);
-            return savedCall;
-
-        } catch (RuntimeException exception) {
-            try {
-                janusService.destroyRoom(roomId);
-            } catch (RuntimeException cleanupException) {
-                exception.addSuppressed(cleanupException);
-            }
-
-            throw exception;
-        }
+        CallSession savedCall = callSessionRepository.save(call);
+        publishEvent(project, savedCall, CallEvent.Type.STARTED, userId);
+        return savedCall;
     }
 
     @Override
@@ -123,14 +118,38 @@ public class CallServiceImpl implements CallService {
             return call;
         }
 
-        janusService.destroyRoom(call.getRoomId());
-
         call.setStatus(CallSession.CallStatus.ENDED);
-        call.setEndedAt(java.time.Instant.now());
+        call.setEndedAt(Instant.now());
 
         CallSession savedCall = callSessionRepository.save(call);
         publishEvent(project, savedCall, CallEvent.Type.ENDED, userId);
+        cleanupRoomAfterCommit(savedCall.getId(), savedCall.getRoomId());
         return savedCall;
+    }
+
+    private void cleanupRoomIfTransactionRollsBack(long roomId) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status != STATUS_COMMITTED) {
+                    try {
+                        janusService.destroyRoom(roomId);
+                    } catch (RuntimeException exception) {
+                        log.error("Could not clean up Janus room {} after call creation rollback",
+                                roomId, exception);
+                    }
+                }
+            }
+        });
+    }
+
+    private void cleanupRoomAfterCommit(UUID callId, long roomId) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                callRoomCleanupService.cleanupEndedCall(callId, roomId);
+            }
+        });
     }
 
     private CallSession activeCall(UUID projectId, UUID callId) {
