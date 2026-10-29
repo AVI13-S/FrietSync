@@ -19,5 +19,7 @@ public enum NotificationType {
     POLL_CREATED,
     INVITE_RECEIVED,
     INVITE_ACCEPTED,
+    SPRINT_STARTED,
+    SPRINT_COMPLETED,
     CHAT_MESSAGE
 }
