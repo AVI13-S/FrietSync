@@ -5,12 +5,14 @@ import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.repository.poll.PollRepository;
 import com.frietsync.backend.service.chat.ChatService;
 import com.frietsync.backend.service.community.CommunityService;
+import com.frietsync.backend.service.impl.project.ProjectAccess;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
+import org.springframework.messaging.MessagingException;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
@@ -20,12 +22,15 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Component;
 
+import java.security.Principal;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Component
 @RequiredArgsConstructor
-public class ChatAuthChannelInterceptor implements ChannelInterceptor {
+public class CompositeAuthChannelInterceptor implements ChannelInterceptor {
 
     private static final String SEND_PREFIX = "/app/projects/";
     private static final String CHAT_SUFFIX = "/chat";
@@ -37,8 +42,12 @@ public class ChatAuthChannelInterceptor implements ChannelInterceptor {
     private static final String COMMUNITY_TOPIC_PREFIX = "/topic/workspaces/";
     private static final String COMMUNITY_TOPIC_SUFFIX = "/community";
 
+    private static final Pattern ISSUE_HISTORY_TOPIC =
+            Pattern.compile("^/topic/issues/([0-9a-fA-F\\-]{36})/history$");
+
     private final ChatService chatService;
     private final CommunityService communityService;
+    private final ProjectAccess projectAccess;
     private final JwtUtil jwtUtil;
     private final UserRepository userRepository;
     private final PollRepository pollRepository;
@@ -53,18 +62,20 @@ public class ChatAuthChannelInterceptor implements ChannelInterceptor {
         if (accessor.getCommand() == StompCommand.CONNECT) {
             authenticate(accessor);
         } else if (accessor.getCommand() == StompCommand.SUBSCRIBE) {
-            UUID userId = userId(accessor);
             String destination = accessor.getDestination();
-            if (isCommunityTopic(destination)) {
-                communityService.assertWorkspaceMember(communityWorkspaceId(destination), userId);
-            } else if (!NOTIFICATION_DESTINATION.equals(destination)) {
-                chatService.assertProjectAccess(subscriptionProjectId(destination), userId);
+            if (destination != null && ISSUE_HISTORY_TOPIC.matcher(destination).matches()) {
+                authenticateIssueSubscription(accessor, destination);
+            } else {
+                authenticateChatOrProjectSubscription(accessor, destination);
             }
         } else if (accessor.getCommand() == StompCommand.SEND) {
-            chatService.assertProjectAccess(
-                    projectId(accessor.getDestination(), SEND_PREFIX),
-                    userId(accessor)
-            );
+            String destination = accessor.getDestination();
+            if (destination != null && destination.startsWith(SEND_PREFIX) && destination.endsWith(CHAT_SUFFIX)) {
+                chatService.assertProjectAccess(
+                        projectId(destination, SEND_PREFIX, CHAT_SUFFIX),
+                        userId(accessor)
+                );
+            }
         }
         return message;
     }
@@ -72,7 +83,12 @@ public class ChatAuthChannelInterceptor implements ChannelInterceptor {
     private void authenticate(StompHeaderAccessor accessor) {
         String authorization = accessor.getFirstNativeHeader(HttpHeaders.AUTHORIZATION);
         if (authorization == null || !authorization.startsWith("Bearer ")) {
-            throw new AccessDeniedException("A bearer access token is required to connect");
+            String authHeaderLowerCase = accessor.getFirstNativeHeader("authorization");
+            if (authHeaderLowerCase != null && authHeaderLowerCase.startsWith("Bearer ")) {
+                authorization = authHeaderLowerCase;
+            } else {
+                throw new AccessDeniedException("A bearer access token is required to connect");
+            }
         }
 
         Claims claims;
@@ -96,6 +112,25 @@ public class ChatAuthChannelInterceptor implements ChannelInterceptor {
                 null,
                 List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()))
         ));
+    }
+
+    private void authenticateIssueSubscription(StompHeaderAccessor accessor, String destination) {
+        UUID userId = userId(accessor);
+        Matcher m = ISSUE_HISTORY_TOPIC.matcher(destination);
+        if (m.matches()) {
+            UUID issueId = UUID.fromString(m.group(1));
+            var issue = projectAccess.issue(issueId);
+            projectAccess.requireMember(projectAccess.project(issue.getProjectId()), userId);
+        }
+    }
+
+    private void authenticateChatOrProjectSubscription(StompHeaderAccessor accessor, String destination) {
+        UUID userId = userId(accessor);
+        if (isCommunityTopic(destination)) {
+            communityService.assertWorkspaceMember(communityWorkspaceId(destination), userId);
+        } else if (!NOTIFICATION_DESTINATION.equals(destination)) {
+            chatService.assertProjectAccess(subscriptionProjectId(destination), userId);
+        }
     }
 
     private boolean isCommunityTopic(String destination) {
@@ -123,22 +158,13 @@ public class ChatAuthChannelInterceptor implements ChannelInterceptor {
                 && authentication.getPrincipal() instanceof UUID id) {
             return id;
         }
+        Principal principal = accessor.getUser();
+        if (principal != null) {
+            try {
+                return UUID.fromString(principal.getName());
+            } catch (Exception ignored) {}
+        }
         throw new AccessDeniedException("A valid authenticated connection is required");
-    }
-
-    private UUID projectId(String destination, String prefix) {
-        if (destination == null || !destination.startsWith(prefix) || !destination.endsWith(CHAT_SUFFIX)) {
-            throw new AccessDeniedException("Unsupported chat destination");
-        }
-        String value = destination.substring(prefix.length(), destination.length() - CHAT_SUFFIX.length());
-        try {
-            if (value.isBlank() || value.contains("/")) {
-                throw new IllegalArgumentException("Invalid project identifier");
-            }
-            return UUID.fromString(value);
-        } catch (IllegalArgumentException ex) {
-            throw new AccessDeniedException("Invalid project identifier", ex);
-        }
     }
 
     private UUID subscriptionProjectId(String destination) {
@@ -179,7 +205,7 @@ public class ChatAuthChannelInterceptor implements ChannelInterceptor {
                 throw new AccessDeniedException("Invalid project identifier", ex);
             }
         }
-        return projectId(destination, TOPIC_PREFIX);
+        return projectId(destination, TOPIC_PREFIX, CHAT_SUFFIX);
     }
 
     private UUID topicProjectId(String destination, String suffix) {
@@ -187,6 +213,9 @@ public class ChatAuthChannelInterceptor implements ChannelInterceptor {
     }
 
     private UUID projectId(String destination, String prefix, String suffix) {
+        if (destination == null || !destination.startsWith(prefix) || !destination.endsWith(suffix)) {
+            throw new AccessDeniedException("Unsupported destination");
+        }
         String value = destination.substring(prefix.length(), destination.length() - suffix.length());
         try {
             if (value.isBlank() || value.contains("/")) throw new IllegalArgumentException();

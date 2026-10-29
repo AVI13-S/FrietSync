@@ -1,6 +1,6 @@
 package com.frietsync.backend.config.chat;
 
-import com.frietsync.backend.config.security.ChatAuthChannelInterceptor;
+import com.frietsync.backend.config.security.CompositeAuthChannelInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
@@ -15,9 +15,9 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 @RequiredArgsConstructor
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
-    private final ChatAuthChannelInterceptor chatAuthChannelInterceptor;
+    private final CompositeAuthChannelInterceptor compositeAuthChannelInterceptor;
 
-    @Value("${app.cors.allowed-origins}")
+    @Value("${app.cors.allowed-origins:https://frietsync.me}")
     private String allowedOriginsRaw;
 
     @Override
@@ -28,12 +28,13 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
+        String[] origins = allowedOriginsRaw != null ? allowedOriginsRaw.split(",") : new String[]{"https://frietsync.me"};
         registry.addEndpoint("/ws")
-                .setAllowedOrigins(allowedOriginsRaw.split(","));
+                .setAllowedOriginPatterns(origins);
     }
 
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
-        registration.interceptors(chatAuthChannelInterceptor);
+        registration.interceptors(compositeAuthChannelInterceptor);
     }
 }
