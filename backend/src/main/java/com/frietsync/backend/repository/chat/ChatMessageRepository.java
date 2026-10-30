@@ -47,6 +47,10 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, UUID> 
     long countByProjectIdAndPinnedAtIsNotNullAndDeletedFalse(UUID projectId);
 
     @Modifying
+    @Query("update ChatMessage m set m.replyTo = null where m.replyTo.id = :messageId")
+    void clearRepliesToMessage(@Param("messageId") UUID messageId);
+
+    @Modifying
     @Query("delete from ChatMessage m where m.projectId = :projectId")
     void deleteByProjectId(@Param("projectId") UUID projectId);
 }

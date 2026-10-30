@@ -107,6 +107,16 @@ public class ChatAttachmentServiceImpl implements ChatAttachmentService {
     }
 
     @Override
+    public void deleteAllForMessage(UUID messageId) {
+        List<ChatAttachment> attachments = repository.findByMessageIdOrderByCreatedAtAsc(messageId);
+        attachments.stream()
+                .map(ChatAttachment::getStorageKey)
+                .filter(key -> key != null && !key.isBlank())
+                .forEach(key -> cleanupService.enqueue(bucketName, key));
+        repository.deleteAll(attachments);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public ChatAttachmentPageResponse listProjectAttachments(UUID projectId, UUID userId, int page) {
         chatAccessService.assertProjectAccess(projectId, userId);

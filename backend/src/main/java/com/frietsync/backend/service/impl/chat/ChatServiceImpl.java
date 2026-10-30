@@ -198,10 +198,14 @@ public class ChatServiceImpl implements ChatService {
         }
 
         message.setDeleted(true);
+        message.setContent("");
         message.setDeletedAt(Instant.now());
         message.setDeletedBy(userId);
-        ChatMessage saved = chatMessageRepository.save(message);
-        return ChatMessageResponse.fromEntity(saved, List.of());
+        ChatMessageResponse response = ChatMessageResponse.fromEntity(message, List.of());
+        chatAttachmentService.deleteAllForMessage(messageId);
+        chatMessageRepository.clearRepliesToMessage(messageId);
+        chatMessageRepository.delete(message);
+        return response;
     }
 
     @Override

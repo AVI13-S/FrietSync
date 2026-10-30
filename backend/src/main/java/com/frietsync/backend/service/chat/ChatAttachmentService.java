@@ -14,6 +14,8 @@ public interface ChatAttachmentService {
 
     List<ChatAttachmentResponse> bindToMessage(UUID projectId, UUID userId, UUID messageId, List<UUID> ids);
 
+    void deleteAllForMessage(UUID messageId);
+
     ChatAttachmentPageResponse listProjectAttachments(UUID projectId, UUID userId, int page);
 
     AttachmentFile download(UUID projectId, UUID attachmentId, UUID userId);
