@@ -17,7 +17,6 @@ import com.frietsync.backend.entity.project.Project;
 import com.frietsync.backend.entity.project.ProjectStatus;
 import com.frietsync.backend.entity.sprint.Sprint;
 import com.frietsync.backend.entity.sprint.SprintStatus;
-import com.frietsync.backend.entity.user.Role;
 import com.frietsync.backend.entity.user.User;
 import com.frietsync.backend.repository.issue.IssueAssigneeRepository;
 import com.frietsync.backend.repository.issue.IssueHistoryRepository;
@@ -63,7 +62,6 @@ public class ActivityServiceImpl implements ActivityService {
     private final IssueAssigneeRepository assigneeRepository;
     private final SprintRepository sprintRepository;
     private final UserRepository userRepository;
-    private final SummaryPdfBuilder pdfBuilder;
 
     @Override
     public List<PresenceResponse> presence(UUID projectId, UUID userId) {
@@ -231,13 +229,6 @@ public class ActivityServiceImpl implements ActivityService {
         Project project = projectAccess.project(projectId);
         projectAccess.requireMember(project, userId);
         return buildSummary(project);
-    }
-
-    @Override
-    public byte[] summaryPdf(UUID projectId, UUID userId) {
-        Project project = projectAccess.project(projectId);
-        projectAccess.require(project, userId, Role.PROJECT_MANAGER, Role.TEAM_LEAD);
-        return pdfBuilder.build(buildSummary(project));
     }
 
     private ProjectSummaryResponse buildSummary(Project project) {

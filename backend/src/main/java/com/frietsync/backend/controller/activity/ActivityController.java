@@ -8,9 +8,6 @@ import com.frietsync.backend.entity.issue.IssueHistoryAction;
 import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.service.activity.ActivityService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ContentDisposition;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -62,16 +59,5 @@ public class ActivityController {
     public ResponseEntity<ProjectSummaryResponse> summary(@PathVariable UUID projectId,
                                                           @AuthenticationPrincipal UUID userId) {
         return ResponseEntity.ok(activityService.summary(projectId, userId));
-    }
-
-    @GetMapping("/projects/{projectId}/summary/pdf")
-    public ResponseEntity<byte[]> summaryPdf(@PathVariable UUID projectId,
-                                             @AuthenticationPrincipal UUID userId) {
-        byte[] pdf = activityService.summaryPdf(projectId, userId);
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
-                        .filename("project-summary-" + projectId + ".pdf").build().toString())
-                .contentType(MediaType.APPLICATION_PDF)
-                .body(pdf);
     }
 }

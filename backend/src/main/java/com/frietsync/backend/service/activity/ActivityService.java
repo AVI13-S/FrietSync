@@ -21,6 +21,4 @@ public interface ActivityService {
                                                int page, int size);
 
     ProjectSummaryResponse summary(UUID projectId, UUID userId);
-
-    byte[] summaryPdf(UUID projectId, UUID userId);
 }
