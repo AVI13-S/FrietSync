@@ -20,6 +20,8 @@ public interface CallSessionRepository
             CallSession.CallStatus status
     );
 
+    List<CallSession> findByStatus(CallSession.CallStatus status);
+
     Optional<CallSession> findByIdAndProjectId(UUID id, UUID projectId);
 
     boolean existsByRoomId(Long roomId);
