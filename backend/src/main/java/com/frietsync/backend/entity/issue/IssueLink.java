@@ -1,10 +1,7 @@
 package com.frietsync.backend.entity.issue;
 
 import com.frietsync.backend.entity.common.BaseEntity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Index;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -29,6 +26,10 @@ public class IssueLink extends BaseEntity {
 
     @Column(name = "target_issue_id", nullable = false, updatable = false)
     private UUID targetIssueId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "link_type", nullable = false, length = 20)
+    private IssueLinkType type;
 
     @Column(name = "created_by", nullable = false, updatable = false)
     private UUID createdBy;
