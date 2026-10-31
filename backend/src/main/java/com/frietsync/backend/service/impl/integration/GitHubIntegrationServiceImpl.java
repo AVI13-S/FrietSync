@@ -186,7 +186,22 @@ public class GitHubIntegrationServiceImpl implements GitHubIntegrationService {
             int commitCount = 0;
             for (Map<String, Object> commit : commits) {
                 Map<?, ?> author = object(commit.get("author"));
-                if (author != null && login.equals(String.valueOf(author.get("login")).toLowerCase())) {
+                boolean matched = false;
+                if (author != null && author.get("login") != null) {
+                    if (login.equals(String.valueOf(author.get("login")).toLowerCase())) {
+                        matched = true;
+                    }
+                } else {
+                    Map<?, ?> commitData = object(commit.get("commit"));
+                    Map<?, ?> commitAuthor = commitData == null ? null : object(commitData.get("author"));
+                    String email = commitAuthor == null ? null : (String) commitAuthor.get("email");
+                    String name = commitAuthor == null ? null : (String) commitAuthor.get("name");
+                    if ((email != null && email.toLowerCase().contains(login)) ||
+                        (name != null && name.toLowerCase().contains(login))) {
+                        matched = true;
+                    }
+                }
+                if (matched) {
                     commitCount++;
                     Map<?, ?> commitData = object(commit.get("commit"));
                     Map<?, ?> committer = commitData == null ? null : object(commitData.get("committer"));
