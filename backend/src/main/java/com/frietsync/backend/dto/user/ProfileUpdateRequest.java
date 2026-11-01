@@ -15,12 +15,18 @@ public class ProfileUpdateRequest {
     @Size(max = 120)
     private String jobTitle;
 
-    @Size(max = 500)
+    @Size(max = 200)
+    @ProfileUrl(type = ProfileUrl.Type.GITHUB,
+            message = "Enter a GitHub profile link, e.g. https://github.com/username")
     private String githubUrl;
 
-    @Size(max = 500)
+    @Size(max = 200)
+    @ProfileUrl(type = ProfileUrl.Type.LINKEDIN,
+            message = "Enter a LinkedIn profile link, e.g. https://www.linkedin.com/in/username")
     private String linkedinUrl;
 
-    @Size(max = 500)
+    @Size(max = 200)
+    @ProfileUrl(type = ProfileUrl.Type.PORTFOLIO,
+            message = "Enter a valid website link that is not a GitHub or LinkedIn profile")
     private String portfolioUrl;
 }
