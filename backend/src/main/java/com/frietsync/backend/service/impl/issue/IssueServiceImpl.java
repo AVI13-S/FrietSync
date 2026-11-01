@@ -120,6 +120,7 @@ public class IssueServiceImpl implements IssueService {
                               Double estimatedHours, UUID milestoneId, UUID userId) {
         Project project = projectRepository.findByIdForUpdate(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
+        access.requireActiveProject(project);
         Role role = access.requireMember(project, userId);
         boolean allowed = role == Role.ADMIN || role == Role.PROJECT_MANAGER
                 || role == Role.TEAM_LEAD || role == Role.REPORTER;
@@ -182,6 +183,7 @@ public class IssueServiceImpl implements IssueService {
     public IssueResponse update(UUID issueId, IssueUpdateRequest r, UUID userId) {
         Issue issue = access.issue(issueId);
         Project project = access.project(issue.getProjectId());
+        access.requireActiveProject(project);
         Role role = access.requireMember(project, userId);
         boolean canEdit = role == Role.ADMIN || role == Role.PROJECT_MANAGER
                 || role == Role.TEAM_LEAD
@@ -252,6 +254,7 @@ public class IssueServiceImpl implements IssueService {
     public IssueResponse changeStatus(UUID issueId, ChangeIssueStatusRequest request, UUID userId) {
         Issue issue = access.issue(issueId);
         Project project = access.project(issue.getProjectId());
+        access.requireActiveProject(project);
         Role role = access.requireMember(project, userId);
         if (role != Role.ADMIN && role != Role.PROJECT_MANAGER) {
             throw new ForbiddenException("Only the project admin or project manager can change issue status");
@@ -290,6 +293,7 @@ public class IssueServiceImpl implements IssueService {
     public void delete(UUID issueId, UUID userId) {
         Issue issue = access.issue(issueId);
         Project project = access.project(issue.getProjectId());
+        access.requireActiveProject(project);
         Role role = access.requireMember(project, userId);
 
         boolean allowed = role == Role.ADMIN
@@ -318,6 +322,7 @@ public class IssueServiceImpl implements IssueService {
     public IssueResponse resolve(UUID issueId, UUID userId) {
         Issue issue = access.issue(issueId);
         Project project = access.project(issue.getProjectId());
+        access.requireActiveProject(project);
         Role role = access.requireMember(project, userId);
 
         boolean assignee = assigneeRepository.existsByIssueIdAndUserId(issueId, userId);
@@ -356,6 +361,7 @@ public class IssueServiceImpl implements IssueService {
     private IssueResponse review(UUID issueId, ReviewRequest request, UUID userId, boolean approve) {
         Issue issue = access.issue(issueId);
         Project project = access.project(issue.getProjectId());
+        access.requireActiveProject(project);
         Role role = access.requireMember(project, userId);
         if (role != Role.ADMIN && role != Role.PROJECT_MANAGER && role != Role.TEAM_LEAD
                 && role != Role.REPORTER) {
@@ -443,6 +449,7 @@ public class IssueServiceImpl implements IssueService {
     public void removeLabel(UUID issueId, UUID labelId, UUID userId) {
         Issue issue = access.issue(issueId);
         Project project = access.project(issue.getProjectId());
+        access.requireActiveProject(project);
         access.require(project, userId, Role.PROJECT_MANAGER, Role.TEAM_LEAD);
         Label label = labelRepository.findById(labelId)
                 .orElseThrow(() -> new ResourceNotFoundException("Label not found"));
@@ -460,6 +467,7 @@ public class IssueServiceImpl implements IssueService {
     public LabelResponse addLabel(UUID issueId, IssueLabelRequest request, UUID userId) {
         Issue issue = access.issue(issueId);
         Project project = access.project(issue.getProjectId());
+        access.requireActiveProject(project);
         access.require(project, userId, Role.PROJECT_MANAGER, Role.TEAM_LEAD);
 
         String name = request.getName().trim();

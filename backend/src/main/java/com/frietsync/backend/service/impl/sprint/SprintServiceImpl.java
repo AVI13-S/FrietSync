@@ -56,6 +56,7 @@ public class SprintServiceImpl implements SprintService {
     public SprintResponse createSprint(UUID projectId, CreateSprintRequest request, UUID currentUserId) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
+        projectAccess.requireActiveProject(project);
 
         requireProjectManagerOrTeamLeadorAdmin(project, currentUserId);
         checkIssueProject(projectId, request.getIssueId(), request.getStartDate(), request.getEndDate());
@@ -127,6 +128,8 @@ public class SprintServiceImpl implements SprintService {
     @Transactional
     public SprintResponse updateSprint(UUID sprintId, UpdateSprintRequest request, UUID currentUserId) {
         Sprint sprint = findSprintOrThrow(sprintId);
+        Project project = findProjectForWrite(sprint.getProjectId());
+        projectAccess.requireActiveProject(project);
         requireProjectManager(sprint.getProjectId(), currentUserId);
         UUID updatedIssueId = request.isUnlinkIssue() ? null
                 : request.getIssueId() == null ? sprint.getIssueId() : request.getIssueId();
@@ -138,7 +141,6 @@ public class SprintServiceImpl implements SprintService {
                 ? sprint.getEndDate()
                 : request.getEndDate();
         checkDates(updatedStartDate, updatedEndDate);
-        Project project = findProjectForWrite(sprint.getProjectId());
         checkIssueProject(sprint.getProjectId(), updatedIssueId, updatedStartDate, updatedEndDate);
         if (request.getIssueId() != null || request.isUnlinkIssue()) {
             sprint.setIssueId(updatedIssueId);
@@ -156,6 +158,8 @@ public class SprintServiceImpl implements SprintService {
     @Transactional
     public SprintResponse changeStatus(UUID sprintId, ChangeSprintStatusRequest request, UUID currentUserId) {
         Sprint sprint = findSprintForWrite(sprintId);
+        Project project = findProjectForWrite(sprint.getProjectId());
+        projectAccess.requireActiveProject(project);
         requireProjectManager(sprint.getProjectId(), currentUserId);
         if (sprint.getStatus() == request.status()) {
             return toResponse(sprint);
@@ -169,6 +173,8 @@ public class SprintServiceImpl implements SprintService {
     @Transactional
     public SprintResponse startSprint(UUID sprintId, UUID currentUserId) {
         Sprint sprint = findSprintOrThrow(sprintId);
+        Project project = findProjectOrThrow(sprint.getProjectId());
+        projectAccess.requireActiveProject(project);
         requireManagerOrAssignedContributor(sprint, currentUserId);
         if (sprint.getStatus() != SprintStatus.PLANNED) {
             throw new BadRequestException("Only a planned sprint can be started");
@@ -186,6 +192,8 @@ public class SprintServiceImpl implements SprintService {
     @Transactional
     public SprintResponse completeSprint(UUID sprintId, UUID currentUserId) {
         Sprint sprint = findSprintOrThrow(sprintId);
+        Project project = findProjectOrThrow(sprint.getProjectId());
+        projectAccess.requireActiveProject(project);
         requireManagerOrAssignedContributor(sprint, currentUserId);
         if (sprint.getStatus() != SprintStatus.ACTIVE) {
             throw new BadRequestException("Only an active sprint can be completed");
@@ -199,6 +207,8 @@ public class SprintServiceImpl implements SprintService {
     @Transactional
     public void deleteSprint(UUID sprintId, UUID currentUserId) {
         Sprint sprint = findSprintOrThrow(sprintId);
+        Project project = findProjectOrThrow(sprint.getProjectId());
+        projectAccess.requireActiveProject(project);
         requireProjectManager(sprint.getProjectId(), currentUserId);
         assignmentRequestRepository.deleteBySprintId(sprintId);
         sprintCommentRepository.deleteBySprintId(sprintId);
@@ -209,6 +219,8 @@ public class SprintServiceImpl implements SprintService {
     @Transactional
     public SprintResponse assignSprint(UUID sprintId, UUID contributorId, UUID currentUserId) {
         Sprint sprint = findSprintForWrite(sprintId);
+        Project project = findProjectForWrite(sprint.getProjectId());
+        projectAccess.requireActiveProject(project);
         requireProjectManager(sprint.getProjectId(), currentUserId);
         checkContributor(sprint.getProjectId(), contributorId);
         checkNotCompleted(sprint);
@@ -229,6 +241,8 @@ public class SprintServiceImpl implements SprintService {
     @Transactional
     public SprintAssignmentRequestResponse requestAssignment(UUID sprintId, UUID currentUserId) {
         Sprint sprint = findSprintForWrite(sprintId);
+        Project project = findProjectForWrite(sprint.getProjectId());
+        projectAccess.requireActiveProject(project);
         checkContributor(sprint.getProjectId(), currentUserId);
         checkNotCompleted(sprint);
         if (currentUserId.equals(sprint.getAssignedContributorId())) {
@@ -243,7 +257,6 @@ public class SprintServiceImpl implements SprintService {
         request.setSprintId(sprintId);
         request.setRequestedBy(currentUserId);
         SprintAssignmentRequest savedRequest = assignmentRequestRepository.save(request);
-        Project project = findProjectForWrite(sprint.getProjectId());
         if (project.getProjectManagerId() != null) {
             notificationPublisher.publish(project.getProjectManagerId(),
                     NotificationType.SPRINT_ASSIGNMENT_REQUESTED,
@@ -275,6 +288,8 @@ public class SprintServiceImpl implements SprintService {
             UUID requestId,
             UUID currentUserId) {
         Sprint sprint = findSprintForWrite(sprintId);
+        Project project = findProjectForWrite(sprint.getProjectId());
+        projectAccess.requireActiveProject(project);
         requireProjectManager(sprint.getProjectId(), currentUserId);
         SprintAssignmentRequest request = assignmentRequestRepository.findByIdForUpdate(requestId)
                 .orElseThrow(() -> new ResourceNotFoundException("Sprint assignment request not found"));

@@ -33,6 +33,13 @@ public class ProjectAccess {
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
     }
 
+    public void requireActiveProject(Project project) {
+        if (project.getStatus() == com.frietsync.backend.entity.project.ProjectStatus.COMPLETED ||
+            project.getStatus() == com.frietsync.backend.entity.project.ProjectStatus.CANCELLED) {
+            throw new com.frietsync.backend.exception.BadRequestException("Cannot perform modifications or actions on a completed or cancelled project");
+        }
+    }
+
     public Issue issue(UUID issueId) {
         Issue issue = issueRepository.findById(issueId)
                 .orElseThrow(() -> new ResourceNotFoundException("Issue not found"));

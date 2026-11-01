@@ -40,6 +40,7 @@ public class MilestoneServiceImpl implements MilestoneService {
     @Transactional
     public MilestoneResponse create(UUID projectId, UUID userId, MilestoneRequest request) {
         Project project = findProject(projectId);
+        projectAccess.requireActiveProject(project);
         requireProjectManager(project, userId);
         validateDueDate(project, request.getDueDate());
 
@@ -72,6 +73,7 @@ public class MilestoneServiceImpl implements MilestoneService {
     public MilestoneResponse update(UUID milestoneId, UUID userId, UpdateMilestoneRequest request) {
         Milestone milestone = findMilestone(milestoneId);
         Project project = findProject(milestone.getProjectId());
+        projectAccess.requireActiveProject(project);
         requireProjectManager(project, userId);
 
         if (request.getName() != null) {
@@ -118,7 +120,9 @@ public class MilestoneServiceImpl implements MilestoneService {
     @Transactional
     public void delete(UUID milestoneId, UUID userId) {
         Milestone milestone = findMilestone(milestoneId);
-        requireProjectManager(findProject(milestone.getProjectId()), userId);
+        Project project = findProject(milestone.getProjectId());
+        projectAccess.requireActiveProject(project);
+        requireProjectManager(project, userId);
         issueRepository.clearMilestoneLink(milestoneId);
         milestoneRepository.delete(milestone);
     }

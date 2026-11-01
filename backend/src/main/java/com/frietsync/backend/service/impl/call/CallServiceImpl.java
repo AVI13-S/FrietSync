@@ -51,6 +51,7 @@ public class CallServiceImpl implements CallService {
     public CallSession startCall(UUID projectId, UUID userId) {
         Project project = projectRepository.findByIdForUpdate(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
+        projectAccess.requireActiveProject(project);
         projectAccess.requireMember(project, userId);
         if (callSessionRepository
                 .findByProjectIdAndStatus(
@@ -99,6 +100,7 @@ public class CallServiceImpl implements CallService {
     @Transactional
     public CallSession joinCall(UUID projectId, UUID callId, UUID userId) {
         Project project = projectAccess.project(projectId);
+        projectAccess.requireActiveProject(project);
         projectAccess.requireMember(project, userId);
         CallSession call = activeCall(projectId, callId);
 
