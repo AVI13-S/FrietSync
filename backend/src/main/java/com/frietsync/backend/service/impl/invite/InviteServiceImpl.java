@@ -46,6 +46,7 @@ public class InviteServiceImpl implements InviteService {
     private final NotificationPublisher notificationPublisher;
     private final Duration inviteValidity;
     private final String invitesUrl;
+    private final com.frietsync.backend.service.impl.project.ProjectAccess projectAccess;
 
     public InviteServiceImpl(InviteRepository inviteRepository,
                              UserRepository userRepository,
@@ -55,7 +56,8 @@ public class InviteServiceImpl implements InviteService {
                              EmailService emailService,
                              NotificationPublisher notificationPublisher,
                              @Value("${app.invite.validity-days}") long inviteValidityDays,
-                             @Value("${app.invite.frontend-url}") String invitesUrl) {
+                             @Value("${app.invite.frontend-url}") String invitesUrl,
+                             com.frietsync.backend.service.impl.project.ProjectAccess projectAccess) {
         this.inviteRepository = inviteRepository;
         this.userRepository = userRepository;
         this.workspaceRepository = workspaceRepository;
@@ -65,6 +67,7 @@ public class InviteServiceImpl implements InviteService {
         this.notificationPublisher = notificationPublisher;
         this.inviteValidity = Duration.ofDays(inviteValidityDays);
         this.invitesUrl = invitesUrl;
+        this.projectAccess = projectAccess;
     }
 
     @Override
@@ -225,6 +228,7 @@ public class InviteServiceImpl implements InviteService {
         }
         Project project = projectRepository.findByIdForUpdate(projectId)
                 .orElseThrow(() -> new BadRequestException("Project not found"));
+        projectAccess.requireActiveProject(project);
         if (!admin.getId().equals(project.getAdminId())) {
             throw new ForbiddenException("Only the project admin can invite project members");
         }

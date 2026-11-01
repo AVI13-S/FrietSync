@@ -73,6 +73,7 @@ public class PollServiceImpl implements PollService {
     public PollResponse create(UUID projectId, CreatePollRequest request, UUID userId) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
+        projectAccess.requireActiveProject(project);
         requireMember(project, userId);
         Instant endsAt = null;
         if (request.getDurationSeconds() != null) {
@@ -217,7 +218,9 @@ public class PollServiceImpl implements PollService {
     public PollResponse vote(UUID pollId, VoteRequest request, UUID userId) {
         Poll poll = pollRepository.findByIdForUpdate(pollId)
                 .orElseThrow(() -> new ResourceNotFoundException("Poll not found"));
-        requireMember(findProject(poll.getProjectId()), userId);
+        Project project = findProject(poll.getProjectId());
+        projectAccess.requireActiveProject(project);
+        requireMember(project, userId);
         if (poll.getStatus() == PollStatus.OPEN && poll.getEndsAt() != null
                 && !Instant.now().isBefore(poll.getEndsAt())) {
             closePoll(poll);
@@ -270,8 +273,9 @@ public class PollServiceImpl implements PollService {
     public PollResponse close(UUID pollId, String decisionRecord, UUID userId) {
         Poll poll = pollRepository.findByIdForUpdate(pollId)
                 .orElseThrow(() -> new ResourceNotFoundException("Poll not found"));
-        requireMember(findProject(poll.getProjectId()), userId);
         Project project = findProject(poll.getProjectId());
+        projectAccess.requireActiveProject(project);
+        requireMember(project, userId);
         if (!poll.getCreatedBy().equals(userId) && !Objects.equals(project.getProjectManagerId(), userId)
                 && !Objects.equals(project.getAdminId(), userId)) {
             throw new ForbiddenException("Only the poll creator or project manager can close this poll");

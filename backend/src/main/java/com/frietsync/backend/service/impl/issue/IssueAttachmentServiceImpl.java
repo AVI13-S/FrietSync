@@ -61,7 +61,9 @@ public class IssueAttachmentServiceImpl implements IssueAttachmentService {
     @Override
     public AttachmentResponse add(UUID issueId, MultipartFile file, UUID userId) {
         Issue issue = access.issue(issueId);
-        access.requireMember(access.project(issue.getProjectId()), userId);
+        com.frietsync.backend.entity.project.Project project = access.project(issue.getProjectId());
+        access.requireActiveProject(project);
+        access.requireMember(project, userId);
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("File is empty");
         }

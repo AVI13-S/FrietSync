@@ -1,5 +1,6 @@
 package com.frietsync.backend.service.impl.chat;
 
+import com.frietsync.backend.service.impl.project.ProjectAccess;
 import com.frietsync.backend.entity.project.Project;
 import com.frietsync.backend.exception.ForbiddenException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
@@ -19,11 +20,14 @@ public class ChatAccessServiceImpl implements ChatAccessService {
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository projectMemberRepository;
 
+    private final ProjectAccess projectAccess;
+
     @Override
     @Transactional(readOnly = true)
     public void assertProjectAccess(UUID projectId, UUID userId) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
+        projectAccess.requireActiveProject(project);
         if (!hasProjectAccess(project, userId)) {
             throw new ForbiddenException("You don't have access to this project's chat");
         }
