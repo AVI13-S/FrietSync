@@ -33,6 +33,8 @@ public interface WorkspaceService {
 
     WorkspaceResponse deleteWorkspace(UUID userId, UUID workspaceId);
 
+    List<WorkspaceResponse> getMyDeletedWorkspaces(UUID userId);
+
     WorkspaceResponse restoreWorkspace(UUID userId, UUID workspaceId);
 
     void purgeExpiredWorkspaces();

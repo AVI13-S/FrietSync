@@ -157,10 +157,27 @@ public class WorkspaceServiceImpl implements WorkspaceService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<WorkspaceResponse> getMyDeletedWorkspaces(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (user.getRole() != Role.ADMIN) {
+            throw new ForbiddenException("Only admins can view deleted workspaces");
+        }
+        Instant cutoff = Instant.now().minus(Duration.ofDays(30));
+        return workspaceRepository.findAllByAdminIdAndDeletionRequestedAtIsNotNull(userId).stream()
+                .filter(w -> w.getDeletionRequestedAt().plus(Duration.ofDays(30)).isAfter(Instant.now()))
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Override
     @Transactional
     public WorkspaceResponse restoreWorkspace(UUID userId, UUID workspaceId) {
+        User user = userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         Workspace workspace = workspaceRepository.findByIdForUpdate(workspaceId)
-                .orElseThrow(() -> new ResourceNotFoundException("Workspace not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Resource not found"));
         if (!workspace.getAdminId().equals(userId)) {
             throw new ForbiddenException("Only the workspace admin can restore it");
         }
@@ -171,6 +188,17 @@ public class WorkspaceServiceImpl implements WorkspaceService {
         if (!permanentDeletionAt.isAfter(Instant.now())) {
             throw new BadRequestException("The workspace restore period has expired");
         }
+
+        if (user.getWorkspaceId() != null && !user.getWorkspaceId().equals(workspaceId)) {
+            user.setWorkspaceId(workspaceId);
+            user.setRole(Role.ADMIN);
+            userRepository.save(user);
+        } else if (user.getWorkspaceId() == null) {
+            user.setWorkspaceId(workspaceId);
+            user.setRole(Role.ADMIN);
+            userRepository.save(user);
+        }
+
         workspace.setDeletionRequestedAt(null);
         return toResponse(workspaceRepository.save(workspace));
     }
