@@ -69,6 +69,13 @@ public class WorkspaceController {
         return workspaceService.deleteWorkspace(userId, workspaceId);
     }
 
+    @GetMapping("/deleted")
+    public List<WorkspaceResponse> getMyDeletedWorkspaces(
+            @AuthenticationPrincipal UUID userId
+    ) {
+        return workspaceService.getMyDeletedWorkspaces(userId);
+    }
+
     @PostMapping("/{workspaceId}/restore")
     public WorkspaceResponse restoreWorkspace(
             @AuthenticationPrincipal UUID userId,

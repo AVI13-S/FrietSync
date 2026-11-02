@@ -34,9 +34,8 @@ public class ProjectAccess {
     }
 
     public void requireActiveProject(Project project) {
-        if (project.getStatus() == com.frietsync.backend.entity.project.ProjectStatus.COMPLETED ||
-            project.getStatus() == com.frietsync.backend.entity.project.ProjectStatus.CANCELLED) {
-            throw new com.frietsync.backend.exception.BadRequestException("Cannot perform modifications or actions on a completed or cancelled project");
+        if (project.getStatus() != com.frietsync.backend.entity.project.ProjectStatus.ACTIVE) {
+            throw new com.frietsync.backend.exception.BadRequestException("Cannot perform modifications or actions on a project that is not active");
         }
     }
 
