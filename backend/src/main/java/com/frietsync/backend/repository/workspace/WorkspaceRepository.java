@@ -21,4 +21,6 @@ public interface WorkspaceRepository extends JpaRepository<Workspace, UUID> {
     );
 
     List<Workspace> findAllByDeletionRequestedAtLessThanEqual(Instant cutoff);
+
+    List<Workspace> findAllByAdminIdAndDeletionRequestedAtIsNotNull(UUID adminId);
 }
