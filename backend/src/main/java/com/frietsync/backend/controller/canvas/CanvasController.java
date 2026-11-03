@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.UUID;
 
-/** Read-only: loads data when a screen opens. Every change is sent over WebSocket instead. */
 @RestController
 @RequestMapping("/api/v1")
 @RequiredArgsConstructor
