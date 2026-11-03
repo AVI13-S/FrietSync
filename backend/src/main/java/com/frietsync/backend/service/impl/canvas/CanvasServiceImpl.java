@@ -7,7 +7,6 @@ import com.frietsync.backend.dto.canvas.CanvasElementUpdateRequest;
 import com.frietsync.backend.dto.canvas.CanvasEvent;
 import com.frietsync.backend.dto.canvas.CanvasEventType;
 import com.frietsync.backend.dto.canvas.CanvasResponse;
-import com.frietsync.backend.dto.canvas.CanvasTemplateResponse;
 import com.frietsync.backend.dto.canvas.ConvertToIssueRequest;
 import com.frietsync.backend.dto.canvas.ConvertToIssueResponse;
 import com.frietsync.backend.dto.canvas.CreateCanvasRequest;
@@ -17,8 +16,6 @@ import com.frietsync.backend.dto.issue.IssueResponse;
 import com.frietsync.backend.dto.issue.IssueSummaryResponse;
 import com.frietsync.backend.entity.canvas.Canvas;
 import com.frietsync.backend.entity.canvas.CanvasElement;
-import com.frietsync.backend.entity.canvas.CanvasElementType;
-import com.frietsync.backend.entity.canvas.CanvasTemplate;
 import com.frietsync.backend.entity.issue.Issue;
 import com.frietsync.backend.entity.project.Project;
 import com.frietsync.backend.entity.user.Role;
@@ -61,43 +58,23 @@ public class CanvasServiceImpl implements CanvasService {
     private final IssueService issueService;
     private final UserRepository userRepository;
     private final ProjectAccess access;
-    private final CanvasTemplateBuilder templateBuilder;
     private final ApplicationEventPublisher events;
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<CanvasTemplateResponse> templates() {
-        List<CanvasTemplateResponse> list = new ArrayList<>();
-        list.add(CanvasTemplateResponse.builder().key("BLANK").name("Blank canvas")
-                .description("Start with an empty canvas.").build());
-        list.add(CanvasTemplateResponse.builder().key("FLOWCHART").name("Flowchart")
-                .description("Start, process steps, a decision with two branches and an end.").build());
-        list.add(CanvasTemplateResponse.builder().key("ARCHITECTURE").name("Architecture diagram")
-                .description("Client, API gateway, services and a database.").build());
-        list.add(CanvasTemplateResponse.builder().key("USER_FLOW").name("User flow")
-                .description("A sign-up journey from landing page to dashboard, with a notes area.").build());
-        return list;
-    }
 
     @Override
     public CanvasDetailResponse createCanvas(UUID projectId, CreateCanvasRequest request, UUID userId) {
         requireEditor(projectId, userId);
+        String name = cleanName(request.getName());
         if (canvasRepository.countByProjectId(projectId) >= MAX_CANVASES_PER_PROJECT) {
             throw new BadRequestException("A project can have at most " + MAX_CANVASES_PER_PROJECT + " canvases");
         }
 
         Canvas canvas = new Canvas();
         canvas.setProjectId(projectId);
-        canvas.setName(request.getName().trim());
+        canvas.setName(name);
         canvas.setCreatedBy(userId);
         canvas = canvasRepository.save(canvas);
 
-        List<CanvasElement> created = new ArrayList<>();
-        CanvasTemplate template = request.getTemplate();
-        if (template != null && template != CanvasTemplate.BLANK) {
-            created = templateBuilder.build(canvas.getId(), template, userId);
-        }
-        return buildDetail(canvas, created);
+        return buildDetail(canvas, new ArrayList<CanvasElement>());
     }
 
     @Override
@@ -122,7 +99,7 @@ public class CanvasServiceImpl implements CanvasService {
     public CanvasResponse renameCanvas(UUID canvasId, RenameCanvasRequest request, UUID userId) {
         Canvas canvas = findCanvas(canvasId);
         requireEditor(canvas.getProjectId(), userId);
-        canvas.setName(request.getName().trim());
+        canvas.setName(cleanName(request.getName()));
         canvas = canvasRepository.save(canvas);
 
         events.publishEvent(CanvasEvent.builder()
@@ -174,54 +151,40 @@ public class CanvasServiceImpl implements CanvasService {
     public CanvasElementResponse createElement(UUID canvasId, CanvasElementRequest r, UUID userId) {
         Canvas canvas = findCanvas(canvasId);
         requireEditor(canvas.getProjectId(), userId);
+
+        if (r.getType() == null) {
+            throw new BadRequestException("Item type is required");
+        }
+        if (r.getX() == null || r.getY() == null) {
+            throw new BadRequestException("Item position (x and y) is required");
+        }
+        checkFieldLengths(r.getText(), r.getColor(), r.getShape());
         if (elementRepository.countByCanvasId(canvasId) >= MAX_ELEMENTS_PER_CANVAS) {
             throw new BadRequestException("A canvas can have at most " + MAX_ELEMENTS_PER_CANVAS + " items");
         }
 
-        CanvasElementType type = r.getType();
-        CanvasElement element = newElement(canvasId, type, userId);
+        CanvasElement element = new CanvasElement();
+        element.setCanvasId(canvasId);
+        element.setType(r.getType());
+        element.setShape(r.getShape());
         element.setX(r.getX());
         element.setY(r.getY());
+        element.setWidth(r.getWidth());
+        element.setHeight(r.getHeight());
+        element.setEndX(r.getEndX());
+        element.setEndY(r.getEndY());
+        element.setFromElementId(r.getFromElementId());
+        element.setToElementId(r.getToElementId());
         if (r.getRotation() != null) {
             element.setRotation(r.getRotation());
         }
         if (r.getZIndex() != null) {
             element.setZIndex(r.getZIndex());
-        } else {
-            element.setZIndex(elementRepository.findMaxZIndex(canvasId) + 1);
         }
-        if (r.getColor() != null) {
-            element.setColor(r.getColor());
-        } else {
-            element.setColor(defaultColor(type));
-        }
-        element.setText(emptyToNull(r.getText()));
-
-        if (type == CanvasElementType.STICKY_NOTE) {
-            element.setWidth(valueOrDefault(r.getWidth(), 200));
-            element.setHeight(valueOrDefault(r.getHeight(), 200));
-        } else if (type == CanvasElementType.SHAPE) {
-            if (r.getShape() == null) {
-                throw new BadRequestException("A shape needs a shape type");
-            }
-            element.setShape(r.getShape());
-            element.setWidth(valueOrDefault(r.getWidth(), 160));
-            element.setHeight(valueOrDefault(r.getHeight(), 100));
-        } else if (type == CanvasElementType.TEXT) {
-            if (element.getText() == null || element.getText().trim().isEmpty()) {
-                throw new BadRequestException("Text items cannot be empty");
-            }
-            element.setWidth(valueOrDefault(r.getWidth(), 200));
-            element.setHeight(valueOrDefault(r.getHeight(), 40));
-        } else if (type == CanvasElementType.ARROW) {
-            if (r.getEndX() == null || r.getEndY() == null) {
-                throw new BadRequestException("An arrow needs endX and endY");
-            }
-            element.setEndX(r.getEndX());
-            element.setEndY(r.getEndY());
-            element.setFromElementId(checkConnector(canvasId, r.getFromElementId()));
-            element.setToElementId(checkConnector(canvasId, r.getToElementId()));
-        }
+        element.setText(r.getText());
+        element.setColor(r.getColor());
+        element.setCreatedBy(userId);
+        element.setUpdatedBy(userId);
 
         element = elementRepository.save(element);
         publishUpsert(canvasId, userId, element);
@@ -234,12 +197,34 @@ public class CanvasServiceImpl implements CanvasService {
         Canvas canvas = findCanvas(canvasId);
         requireEditor(canvas.getProjectId(), userId);
         CanvasElement element = findElement(canvasId, elementId);
+        checkFieldLengths(r.getText(), r.getColor(), r.getShape());
 
+        if (r.getShape() != null) {
+            element.setShape(r.getShape());
+        }
         if (r.getX() != null) {
             element.setX(r.getX());
         }
         if (r.getY() != null) {
             element.setY(r.getY());
+        }
+        if (r.getWidth() != null) {
+            element.setWidth(r.getWidth());
+        }
+        if (r.getHeight() != null) {
+            element.setHeight(r.getHeight());
+        }
+        if (r.getEndX() != null) {
+            element.setEndX(r.getEndX());
+        }
+        if (r.getEndY() != null) {
+            element.setEndY(r.getEndY());
+        }
+        if (r.getFromElementId() != null) {
+            element.setFromElementId(r.getFromElementId());
+        }
+        if (r.getToElementId() != null) {
+            element.setToElementId(r.getToElementId());
         }
         if (r.getRotation() != null) {
             element.setRotation(r.getRotation());
@@ -247,43 +232,11 @@ public class CanvasServiceImpl implements CanvasService {
         if (r.getZIndex() != null) {
             element.setZIndex(r.getZIndex());
         }
+        if (r.getText() != null) {
+            element.setText(r.getText());
+        }
         if (r.getColor() != null) {
             element.setColor(r.getColor());
-        }
-        if (r.getText() != null) {
-            if (element.getType() == CanvasElementType.TEXT && r.getText().trim().isEmpty()) {
-                throw new BadRequestException("Text items cannot be empty");
-            }
-            element.setText(emptyToNull(r.getText()));
-        }
-
-        if (element.getType() == CanvasElementType.ARROW) {
-            if (r.getEndX() != null) {
-                element.setEndX(r.getEndX());
-            }
-            if (r.getEndY() != null) {
-                element.setEndY(r.getEndY());
-            }
-            if (r.isDetachFrom()) {
-                element.setFromElementId(null);
-            } else if (r.getFromElementId() != null) {
-                element.setFromElementId(checkConnector(canvasId, r.getFromElementId()));
-            }
-            if (r.isDetachTo()) {
-                element.setToElementId(null);
-            } else if (r.getToElementId() != null) {
-                element.setToElementId(checkConnector(canvasId, r.getToElementId()));
-            }
-        } else {
-            if (r.getWidth() != null) {
-                element.setWidth(r.getWidth());
-            }
-            if (r.getHeight() != null) {
-                element.setHeight(r.getHeight());
-            }
-            if (element.getType() == CanvasElementType.SHAPE && r.getShape() != null) {
-                element.setShape(r.getShape());
-            }
         }
 
         element.setUpdatedBy(userId);
@@ -301,9 +254,10 @@ public class CanvasServiceImpl implements CanvasService {
 
         List<CanvasElement> toDelete = new ArrayList<>();
         toDelete.add(element);
-        if (element.getType() != CanvasElementType.ARROW) {
-
-            toDelete.addAll(elementRepository.findConnectors(canvasId, elementId));
+        for (CanvasElement arrow : elementRepository.findConnectors(canvasId, elementId)) {
+            if (!arrow.getId().equals(elementId)) {
+                toDelete.add(arrow);
+            }
         }
 
         List<UUID> deletedIds = new ArrayList<>();
@@ -329,42 +283,24 @@ public class CanvasServiceImpl implements CanvasService {
         access.requireMember(project, userId);
         CanvasElement element = findElement(canvasId, elementId);
 
-        if (element.getType() == CanvasElementType.ARROW) {
-            throw new BadRequestException("Arrows cannot be converted to issues");
+        if (request.getTitle() == null || request.getTitle().trim().isEmpty()) {
+            throw new BadRequestException("Issue title is required");
+        }
+        String title = request.getTitle().trim();
+        if (title.length() > 200) {
+            throw new BadRequestException("Issue title must be at most 200 characters");
+        }
+        if (request.getDescription() != null && request.getDescription().length() > 1000) {
+            throw new BadRequestException("Issue description must be at most 1000 characters");
         }
         if (element.getIssueId() != null && issueStillExists(element.getIssueId())) {
             throw new BadRequestException("This item is already linked to an issue");
         }
 
-        String title = "";
-        if (request != null && request.getTitle() != null && !request.getTitle().trim().isEmpty()) {
-            title = request.getTitle().trim();
-        } else {
-            title = firstLine(element.getText());
-        }
-        if (title.isEmpty()) {
-            throw new BadRequestException("Add some text to this item before converting it to an issue");
-        }
-        if (title.length() > 200) {
-            title = title.substring(0, 200);
-        }
-
-        String description = null;
-        if (request != null && request.getDescription() != null && !request.getDescription().trim().isEmpty()) {
-            description = request.getDescription().trim();
-        } else if (element.getText() != null && !element.getText().trim().equals(title)) {
-            description = element.getText().trim();
-        }
-        if (description != null && description.length() > 1000) {
-            description = description.substring(0, 1000);
-        }
-
         IssueRequest issueRequest = new IssueRequest();
         issueRequest.setTitle(title);
-        issueRequest.setDescription(description);
-        if (request != null) {
-            issueRequest.setPriority(request.getPriority());
-        }
+        issueRequest.setDescription(request.getDescription());
+        issueRequest.setPriority(request.getPriority());
         IssueResponse issue = issueService.create(canvas.getProjectId(), issueRequest, userId);
 
         element.setIssueId(issue.getId());
@@ -400,27 +336,27 @@ public class CanvasServiceImpl implements CanvasService {
         return element;
     }
 
-    private CanvasElement newElement(UUID canvasId, CanvasElementType type, UUID userId) {
-        CanvasElement element = new CanvasElement();
-        element.setCanvasId(canvasId);
-        element.setType(type);
-        element.setCreatedBy(userId);
-        element.setUpdatedBy(userId);
-        return element;
+    private String cleanName(String name) {
+        if (name == null || name.trim().isEmpty()) {
+            throw new BadRequestException("Canvas name is required");
+        }
+        String trimmed = name.trim();
+        if (trimmed.length() > 200) {
+            throw new BadRequestException("Canvas name must be at most 200 characters");
+        }
+        return trimmed;
     }
 
-    private UUID checkConnector(UUID canvasId, UUID id) {
-        if (id == null) {
-            return null;
+    private void checkFieldLengths(String text, String color, String shape) {
+        if (text != null && text.length() > 2000) {
+            throw new BadRequestException("Text must be at most 2000 characters");
         }
-        CanvasElement target = elementRepository.findByIdAndCanvasId(id, canvasId).orElse(null);
-        if (target == null) {
-            throw new BadRequestException("Connected item was not found on this canvas");
+        if (color != null && color.length() > 7) {
+            throw new BadRequestException("Color must be at most 7 characters, like #FFF59D");
         }
-        if (target.getType() == CanvasElementType.ARROW) {
-            throw new BadRequestException("Arrows cannot be attached to other arrows");
+        if (shape != null && shape.length() > 30) {
+            throw new BadRequestException("Shape name must be at most 30 characters");
         }
-        return target.getId();
     }
 
     private boolean issueStillExists(UUID issueId) {
@@ -497,7 +433,6 @@ public class CanvasServiceImpl implements CanvasService {
     }
 
     private List<CanvasElementResponse> toElementResponses(List<CanvasElement> elements) {
-        // Find the issues that items were converted into (skip deleted issues)
         Set<UUID> issueIds = new HashSet<>();
         for (CanvasElement element : elements) {
             if (element.getIssueId() != null) {
@@ -554,44 +489,5 @@ public class CanvasServiceImpl implements CanvasService {
                 .priority(i.getPriority())
                 .dueDate(i.getDueDate())
                 .build();
-    }
-
-    private String defaultColor(CanvasElementType type) {
-        if (type == CanvasElementType.STICKY_NOTE) {
-            return "#FFF59D";
-        }
-        if (type == CanvasElementType.SHAPE) {
-            return "#E3F2FD";
-        }
-        if (type == CanvasElementType.ARROW) {
-            return "#455A64";
-        }
-        return "#263238";
-    }
-
-    private double valueOrDefault(Double value, double fallback) {
-        if (value != null) {
-            return value;
-        }
-        return fallback;
-    }
-
-    private String emptyToNull(String text) {
-        if (text == null || text.isEmpty()) {
-            return null;
-        }
-        return text;
-    }
-
-    private String firstLine(String text) {
-        if (text == null) {
-            return "";
-        }
-        String trimmed = text.trim();
-        int newLine = trimmed.indexOf('\n');
-        if (newLine >= 0) {
-            trimmed = trimmed.substring(0, newLine);
-        }
-        return trimmed.trim();
     }
 }

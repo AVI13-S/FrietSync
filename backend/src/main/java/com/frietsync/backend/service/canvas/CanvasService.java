@@ -5,7 +5,6 @@ import com.frietsync.backend.dto.canvas.CanvasElementRequest;
 import com.frietsync.backend.dto.canvas.CanvasElementResponse;
 import com.frietsync.backend.dto.canvas.CanvasElementUpdateRequest;
 import com.frietsync.backend.dto.canvas.CanvasResponse;
-import com.frietsync.backend.dto.canvas.CanvasTemplateResponse;
 import com.frietsync.backend.dto.canvas.ConvertToIssueRequest;
 import com.frietsync.backend.dto.canvas.ConvertToIssueResponse;
 import com.frietsync.backend.dto.canvas.CreateCanvasRequest;
@@ -15,8 +14,6 @@ import java.util.List;
 import java.util.UUID;
 
 public interface CanvasService {
-
-    List<CanvasTemplateResponse> templates();
 
     CanvasDetailResponse createCanvas(UUID projectId, CreateCanvasRequest request, UUID userId);
 
