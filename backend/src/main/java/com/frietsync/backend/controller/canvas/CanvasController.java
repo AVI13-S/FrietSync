@@ -2,7 +2,6 @@ package com.frietsync.backend.controller.canvas;
 
 import com.frietsync.backend.dto.canvas.CanvasDetailResponse;
 import com.frietsync.backend.dto.canvas.CanvasResponse;
-import com.frietsync.backend.dto.canvas.CanvasTemplateResponse;
 import com.frietsync.backend.service.canvas.CanvasService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -21,11 +20,6 @@ import java.util.UUID;
 public class CanvasController {
 
     private final CanvasService canvasService;
-
-    @GetMapping("/canvas-templates")
-    public ResponseEntity<List<CanvasTemplateResponse>> templates() {
-        return ResponseEntity.ok(canvasService.templates());
-    }
 
     @GetMapping("/projects/{projectId}/canvases")
     public ResponseEntity<List<CanvasResponse>> list(@PathVariable UUID projectId,

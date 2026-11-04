@@ -28,9 +28,8 @@ public class CanvasElement extends BaseEntity {
     @Column(name = "element_type", nullable = false, updatable = false, length = 20)
     private CanvasElementType type;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "shape_type", length = 30)
-    private CanvasShape shape;
+    private String shape;
 
     @Column(name = "pos_x", nullable = false)
     private double x;

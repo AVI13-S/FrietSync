@@ -25,7 +25,4 @@ public interface CanvasElementRepository extends JpaRepository<CanvasElement, UU
             + "and (e.fromElementId = :elementId or e.toElementId = :elementId)")
     List<CanvasElement> findConnectors(@Param("canvasId") UUID canvasId,
                                        @Param("elementId") UUID elementId);
-
-    @Query("select coalesce(max(e.zIndex), 0) from CanvasElement e where e.canvasId = :canvasId")
-    Integer findMaxZIndex(@Param("canvasId") UUID canvasId);
 }
