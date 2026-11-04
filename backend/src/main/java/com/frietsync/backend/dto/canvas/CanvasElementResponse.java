@@ -2,7 +2,6 @@ package com.frietsync.backend.dto.canvas;
 
 import com.frietsync.backend.dto.issue.IssueSummaryResponse;
 import com.frietsync.backend.entity.canvas.CanvasElementType;
-import com.frietsync.backend.entity.canvas.CanvasShape;
 import lombok.Builder;
 import lombok.Data;
 
@@ -15,7 +14,7 @@ public class CanvasElementResponse {
     private UUID id;
     private UUID canvasId;
     private CanvasElementType type;
-    private CanvasShape shape;
+    private String shape;
     private double x;
     private double y;
     private Double width;
