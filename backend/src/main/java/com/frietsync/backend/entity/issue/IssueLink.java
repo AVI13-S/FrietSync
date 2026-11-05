@@ -28,8 +28,8 @@ public class IssueLink extends BaseEntity {
     private UUID targetIssueId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "link_type", nullable = false, length = 20)
-    private IssueLinkType type;
+    @Column(name = "link_type", nullable = false, length = 20, columnDefinition = "VARCHAR(20) DEFAULT 'RELATES_TO'")
+    private IssueLinkType type = IssueLinkType.RELATES_TO;
 
     @Column(name = "created_by", nullable = false, updatable = false)
     private UUID createdBy;
