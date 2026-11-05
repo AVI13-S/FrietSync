@@ -128,6 +128,10 @@ public interface AccountCleanupRepository extends Repository<User, UUID> {
     void clearSprintReviewer(@Param("userId") UUID userId);
 
     @Modifying
-    @Query("update Notification n set n.actorId = null where n.actorId = :userId")
+    @Query("delete from NotificationActor n where n.actorId = :userId")
     void clearNotificationActor(@Param("userId") UUID userId);
+
+    @Modifying
+    @Query("delete from UserSkill s where s.userId = :userId")
+    void deleteUserSkills(@Param("userId") UUID userId);
 }

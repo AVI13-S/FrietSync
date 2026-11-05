@@ -9,6 +9,12 @@ import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.exception.StorageServiceException;
 import com.frietsync.backend.repository.user.UserRepository;
+import com.frietsync.backend.repository.user.UserSkillRepository;
+import com.frietsync.backend.entity.user.UserSkill;
+import com.frietsync.backend.dto.user.UserSkillRequest;
+import com.frietsync.backend.dto.user.UserSkillResponse;
+import java.util.List;
+import java.util.stream.Collectors;
 import com.frietsync.backend.repository.user.AccountCleanupRepository;
 import com.frietsync.backend.repository.issue.IssueAttachmentRepository;
 import com.frietsync.backend.repository.workspace.WorkspaceRepository;
@@ -48,6 +54,7 @@ public class UserServiceImpl implements UserService {
     private final S3ObjectCleanupService cleanupService;
     private final AccountCleanupRepository accountCleanupRepository;
     private final IssueAttachmentRepository issueAttachmentRepository;
+    private final UserSkillRepository userSkillRepository;
 
     @Value("${aws.s3.bucket:}")
     private String bucketName;
@@ -234,6 +241,52 @@ public class UserServiceImpl implements UserService {
         String profilePictureKey = user.getProfilePictureKey();
         userRepository.delete(user);
         enqueueStoredFileDeletion(profilePictureKey);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<UserSkillResponse> getUserSkills(UUID userId) {
+        findUser(userId); // ensure user exists
+        return userSkillRepository.findByUserId(userId).stream()
+                .map(skill -> new UserSkillResponse(skill.getId(), skill.getSkillName()))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public UserSkillResponse addUserSkill(UUID userId, UserSkillRequest request) {
+        findUser(userId);
+        long count = userSkillRepository.countByUserId(userId);
+        if (count >= 8) {
+            throw new BadRequestException("You can add up to 8 skills only.");
+        }
+
+        String skillName = request.getSkillName() != null ? request.getSkillName().trim() : "";
+        if (skillName.isEmpty()) {
+            throw new BadRequestException("Skill name must not be blank");
+        }
+
+        if (userSkillRepository.existsByUserIdAndSkillNameIgnoreCase(userId, skillName)) {
+            throw new BadRequestException("Skill already exists for this user");
+        }
+
+        UserSkill skill = new UserSkill();
+        skill.setUserId(userId);
+        skill.setSkillName(skillName);
+        UserSkill saved = userSkillRepository.save(skill);
+        return new UserSkillResponse(saved.getId(), saved.getSkillName());
+    }
+
+    @Override
+    @Transactional
+    public void deleteUserSkill(UUID userId, UUID skillId) {
+        findUser(userId);
+        UserSkill skill = userSkillRepository.findById(skillId)
+                .orElseThrow(() -> new ResourceNotFoundException("Skill not found"));
+        if (!skill.getUserId().equals(userId)) {
+            throw new BadRequestException("Skill does not belong to the user");
+        }
+        userSkillRepository.delete(skill);
     }
 
     private User findUser(UUID userId) {
