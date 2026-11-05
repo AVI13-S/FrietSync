@@ -2,6 +2,7 @@ package com.frietsync.backend.exception;
 
 import io.jsonwebtoken.JwtException;
 import com.frietsync.backend.config.integration.GoogleOAuthProperties;
+import com.frietsync.backend.dto.canvas.CanvasSocketError;
 import com.frietsync.backend.service.integration.InvalidOAuthStateException;
 import com.frietsync.backend.service.integration.MissingRefreshTokenException;
 import com.frietsync.backend.service.integration.OAuthExchangeException;
@@ -14,6 +15,11 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.messaging.Message;
+import org.springframework.messaging.MessagingException;
+import org.springframework.messaging.handler.annotation.MessageExceptionHandler;
+import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
+import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.client.RestClientException;
@@ -171,7 +177,7 @@ public class GlobalExceptionHandler {
     }
 
     private ResponseEntity<?> googleErrorResponse(HttpServletRequest request, HttpStatus status,
-                                                   String result, String message) {
+                                                  String result, String message) {
         if (isGoogleCallback(request)) {
             return ResponseEntity.status(HttpStatus.FOUND).location(frontendResult(result)).build();
         }
@@ -228,6 +234,40 @@ public class GlobalExceptionHandler {
         );
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(errorResponse);
     }
+
+    @MessageExceptionHandler
+    @SendToUser(destinations = "/queue/canvas-errors", broadcast = false)
+    public CanvasSocketError handleCanvasSocketError(Exception ex, Message<?> message) throws Exception {
+        String destination = SimpMessageHeaderAccessor.getDestination(message.getHeaders());
+        if (destination == null || !destination.contains("/canvases/")) {
+            throw ex;
+        }
+
+        int status = 500;
+        String text = "Something went wrong";
+        if (ex instanceof BadRequestException) {
+            status = 400;
+            text = ex.getMessage();
+        } else if (ex instanceof ForbiddenException) {
+            status = 403;
+            text = ex.getMessage();
+        } else if (ex instanceof ResourceNotFoundException) {
+            status = 404;
+            text = ex.getMessage();
+        } else if (ex instanceof MessagingException) {
+            status = 400;
+            text = "Message is missing or has an invalid value";
+        } else {
+            LOG.error("Canvas socket message to {} failed", destination, ex);
+        }
+
+        return CanvasSocketError.builder()
+                .status(status)
+                .message(text)
+                .destination(destination)
+                .build();
+    }
+
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorResponse> handleUnreadableBody(
             HttpMessageNotReadableException ex,
