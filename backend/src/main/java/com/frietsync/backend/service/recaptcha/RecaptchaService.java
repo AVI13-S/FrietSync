@@ -2,14 +2,18 @@ package com.frietsync.backend.service.recaptcha;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.frietsync.backend.exception.BadRequestException;
+import jakarta.annotation.PostConstruct;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
+
+import java.util.Arrays;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -22,13 +26,24 @@ public class RecaptchaService {
     private double minScore;
 
     @Value("${recaptcha.allowed-domain:}")
-    private String allowedDomain;
+    private String allowedDomainConfig;
 
     @Value("${recaptcha.enabled:false}")
     private boolean enabled;
 
     private static final String VERIFY_URL = "https://www.google.com/recaptcha/api/siteverify";
     private final RestTemplate restTemplate = new RestTemplate();
+
+    private Set<String> allowedDomains = Set.of();
+
+    @PostConstruct
+    void initAllowedDomains() {
+        allowedDomains = Arrays.stream(allowedDomainConfig.split(","))
+                .map(String::trim)
+                .map(String::toLowerCase)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toSet());
+    }
 
     public void verify(String token, String expectedAction) {
         if (!enabled) {
@@ -70,8 +85,10 @@ public class RecaptchaService {
             throw new BadRequestException("reCAPTCHA action mismatch");
         }
 
-        if (allowedDomain != null && !allowedDomain.isBlank() && !allowedDomain.equalsIgnoreCase(response.getHostname())) {
-            log.warn("reCAPTCHA hostname mismatch: expected {}, got {}", allowedDomain, response.getHostname());
+        String hostname = response.getHostname();
+        if (!allowedDomains.isEmpty()
+                && (hostname == null || !allowedDomains.contains(hostname.toLowerCase()))) {
+            log.warn("reCAPTCHA hostname mismatch: allowed {}, got {}", allowedDomains, hostname);
             throw new BadRequestException("reCAPTCHA hostname mismatch");
         }
     }
