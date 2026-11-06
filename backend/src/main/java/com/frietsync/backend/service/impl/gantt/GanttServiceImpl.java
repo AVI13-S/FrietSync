@@ -74,6 +74,9 @@ public class GanttServiceImpl implements GanttService {
     private final IssueHistoryRecorder historyRecorder;
     private final ApplicationEventPublisher events;
 
+    private static final LocalDate MIN_DATE = LocalDate.of(2000, 1, 1);
+    private static final LocalDate MAX_DATE = LocalDate.of(2100, 12, 31);
+
     @Override
     @Transactional(readOnly = true)
     public GanttResponse getGantt(UUID projectId, UUID userId) {
@@ -244,6 +247,9 @@ public class GanttServiceImpl implements GanttService {
         if (end.isBefore(start)) {
             throw new BadRequestException("End date cannot be before start date");
         }
+        if (start.isBefore(MIN_DATE) || end.isAfter(MAX_DATE)) {
+            throw new BadRequestException("Dates must be between the years 2000 and 2100");
+        }
         if (project.getStartDate() != null && start.isBefore(project.getStartDate())) {
             throw new BadRequestException("Start date cannot be before the project start date");
         }
@@ -258,8 +264,6 @@ public class GanttServiceImpl implements GanttService {
         Project project = access.project(projectId);
         access.require(project, userId, Role.PROJECT_MANAGER);
         access.requireActiveProject(project);
-
-        baselineRepository.deleteAllForProject(projectId);
 
         List<GanttBaseline> rows = new ArrayList<>();
         int issueCount = 0;
@@ -285,6 +289,11 @@ public class GanttServiceImpl implements GanttService {
             sprintCount++;
         }
 
+        if (rows.isEmpty()) {
+            throw new BadRequestException("Nothing to save: no issue or sprint has both a start and an end date");
+        }
+
+        baselineRepository.deleteAllForProject(projectId);
         baselineRepository.saveAll(rows);
 
         GanttBaselineResponse response = new GanttBaselineResponse();
@@ -319,6 +328,7 @@ public class GanttServiceImpl implements GanttService {
         List<IssueLink> result = new ArrayList<>();
         List<IssueLink> all = issueLinkRepository.findByProjectId(projectId);
         for (IssueLink link : all) {
+
             if (issueById.containsKey(link.getSourceIssueId()) && issueById.containsKey(link.getTargetIssueId())) {
                 result.add(link);
             }
@@ -431,6 +441,7 @@ public class GanttServiceImpl implements GanttService {
         boolean completed = milestone.getCompletedAt() != null;
         item.setStatus(completed ? "COMPLETED" : "OPEN");
         item.setOverdue(!completed && milestone.getDueDate().isBefore(today));
+
         boolean atRisk = false;
         if (!completed) {
             for (Issue issue : issues) {
@@ -590,13 +601,25 @@ public class GanttServiceImpl implements GanttService {
         Map<UUID, LocalDate> finish = new HashMap<>();
         Map<UUID, UUID> driver = new HashMap<>();
         Set<UUID> visiting = new HashSet<>();
-        for (UUID id : nodes.keySet()) {
-            calculateFinish(id, nodes, blockers, finish, driver, visiting);
+
+        for (Issue issue : issues) {
+            if (nodes.containsKey(issue.getId())) {
+                calculateFinish(issue.getId(), nodes, blockers, finish, driver, visiting);
+            }
         }
 
         UUID last = null;
         for (UUID id : finish.keySet()) {
-            if (last == null || finish.get(id).isAfter(finish.get(last))) {
+            if (last == null) {
+                last = id;
+                continue;
+            }
+            LocalDate current = finish.get(id);
+            LocalDate best = finish.get(last);
+            if (current.isAfter(best)) {
+                last = id;
+            } else if (current.equals(best)
+                    && nodes.get(id).getIssueNumber() < nodes.get(last).getIssueNumber()) {
                 last = id;
             }
         }
