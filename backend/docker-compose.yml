@@ -1,0 +1,81 @@
+﻿
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:8080:8080"
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - frietsync-network
+
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-frietsync}
+      POSTGRES_USER: ${DB_USERNAME:?DB_USERNAME must be set}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - frietsync-network
+
+  redis:
+    image: redis:8.10.2
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+    command:
+      - sh
+      - -c
+      - exec redis-server --requirepass "$${REDIS_PASSWORD}" --dir /data
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - redis-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - frietsync-network
+
+  janus:
+    image: canyan/janus-gateway:latest
+    restart: unless-stopped
+    profiles:
+      - voice
+    command: ["/usr/local/bin/janus", "-F", "/usr/local/etc/janus"]
+    volumes:
+      - ${JANUS_CONFIG_PATH:-./janus/config}:/usr/local/etc/janus:ro
+    ports:
+      - "8188:8188/tcp"
+      - "10000-10200:10000-10200/udp"
+    networks:
+      - frietsync-network
+
+volumes:
+  postgres_data:
+    name: frietsync_postgres_data
+  redis_data:
+    name: redis_data
+
+networks:
+  frietsync-network:
+    name: frietsync-network
+    driver: bridge

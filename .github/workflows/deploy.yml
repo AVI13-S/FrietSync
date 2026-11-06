@@ -1,3 +1,4 @@
+
 name: Deploy FrietSync Backend
 
 on:
@@ -25,16 +26,28 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
-            echo "Building backend..."
             cd backend
-            chmod +x mvnw
-            ./mvnw clean package -DskipTests
 
-            echo "Restarting application..."
-            sudo systemctl restart frietsync
+            echo "Validating Docker Compose configuration..."
+            docker compose config --quiet
 
-            echo "Checking application..."
-            sleep 5
-            sudo systemctl is-active --quiet frietsync
+            echo "Building backend image..."
+            docker compose build backend
 
-            echo "Deployment successful!"
+            echo "Starting Docker services..."
+            docker compose up -d
+
+            echo "Checking application health..."
+            for attempt in $(seq 1 60); do
+              if curl --fail --silent http://localhost:8080/api/v1/check >/dev/null; then
+                echo "Deployment successful!"
+                docker compose ps
+                exit 0
+              fi
+              sleep 2
+            done
+
+            echo "Backend health check failed."
+            docker compose ps
+            docker compose logs --tail=150 backend
+            exit 1
