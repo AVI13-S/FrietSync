@@ -21,33 +21,38 @@ jobs:
             set -e
 
             cd /home/ubuntu/FrietSync
-
-            echo "Pulling latest code..."
             git fetch origin main
             git reset --hard origin/main
 
             cd backend
 
-            echo "Validating Docker Compose configuration..."
-            docker compose config --quiet
+            echo "Validating Docker Compose..."
+            sudo docker compose config --quiet
 
-            echo "Building backend image..."
-            docker compose build backend
+            echo "Building backend..."
+            sudo docker compose build backend
 
-            echo "Starting Docker services..."
-            docker compose up -d
+            echo "Starting PostgreSQL and Redis..."
+            sudo docker compose up -d postgres redis
 
-            echo "Checking application health..."
+            echo "Starting Spring Boot..."
+            sudo docker compose up -d backend
+
+            echo "Connecting Janus to Docker network..."
+            if ! sudo docker inspect janus --format '{{json .NetworkSettings.Networks}}' | grep -q '"frietsync-network"'; then
+              sudo docker network connect frietsync-network janus
+            fi
+
+            echo "Checking API health..."
             for attempt in $(seq 1 60); do
               if curl --fail --silent http://localhost:8080/api/v1/check >/dev/null; then
                 echo "Deployment successful!"
-                docker compose ps
+                sudo docker compose ps
                 exit 0
               fi
               sleep 2
             done
 
-            echo "Backend health check failed."
-            docker compose ps
-            docker compose logs --tail=150 backend
+            echo "Deployment failed. Backend logs:"
+            sudo docker compose logs --tail=150 backend
             exit 1
