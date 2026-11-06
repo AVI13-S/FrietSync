@@ -88,7 +88,7 @@ public class CommunityServiceImpl implements CommunityService {
         for (CommunityPost post : result.getContent()) {
             items.add(toPostResponse(post, userId));
         }
-        return new PostPageResponse(items, page, size, result.getTotalElements(), result.getTotalPages());
+        return new PostPageResponse(items, result.getTotalElements());
     }
 
     @Override
@@ -120,8 +120,14 @@ public class CommunityServiceImpl implements CommunityService {
             throw new ForbiddenException("Only the author or an admin can edit this post");
         }
 
-        post.setTitle(request.getTitle().trim());
-        post.setContent(request.getContent().trim());
+        String newTitle = request.getTitle().trim();
+        String newContent = request.getContent().trim();
+        if (newTitle.equals(post.getTitle()) && newContent.equals(post.getContent())) {
+            return toPostResponse(post, userId);
+        }
+
+        post.setTitle(newTitle);
+        post.setContent(newContent);
         post.setEditedAt(Instant.now());
         return toPostResponse(postRepository.save(post), userId);
     }
@@ -151,7 +157,6 @@ public class CommunityServiceImpl implements CommunityService {
             throw new ForbiddenException("Only admins can pin posts");
         }
 
-        // lock the workspace row so two admins cannot pin past the limit at the same time
         workspaceRepository.findByIdForUpdate(workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Workspace not found"));
 
@@ -232,7 +237,12 @@ public class CommunityServiceImpl implements CommunityService {
             throw new ForbiddenException("Only the author or an admin can edit this comment");
         }
 
-        comment.setContent(request.getContent().trim());
+        String newContent = request.getContent().trim();
+        if (newContent.equals(comment.getContent())) {
+            return toCommentResponse(comment, userId);
+        }
+
+        comment.setContent(newContent);
         comment.setEditedAt(Instant.now());
         return toCommentResponse(commentRepository.save(comment), userId);
     }
@@ -296,6 +306,9 @@ public class CommunityServiceImpl implements CommunityService {
 
     private void saveReaction(UUID workspaceId, UUID userId, ReactionTargetType targetType,
                               UUID targetId, ReactionType type) {
+
+        userRepository.findByIdForUpdate(userId);
+
         CommunityReaction reaction = reactionRepository
                 .findByTargetTypeAndTargetIdAndUserId(targetType, targetId, userId)
                 .orElse(null);
@@ -311,6 +324,8 @@ public class CommunityServiceImpl implements CommunityService {
     }
 
     private void removeReaction(ReactionTargetType targetType, UUID targetId, UUID userId) {
+        userRepository.findByIdForUpdate(userId);
+
         CommunityReaction reaction = reactionRepository
                 .findByTargetTypeAndTargetIdAndUserId(targetType, targetId, userId)
                 .orElse(null);
@@ -322,6 +337,9 @@ public class CommunityServiceImpl implements CommunityService {
     private User requireWorkspaceMember(UUID userId, UUID workspaceId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (!user.isActive()) {
+            throw new ForbiddenException("Your account is not active");
+        }
         if (!workspaceId.equals(user.getWorkspaceId())) {
             throw new ForbiddenException("You do not belong to this workspace");
         }
@@ -360,6 +378,14 @@ public class CommunityServiceImpl implements CommunityService {
         }
     }
 
+    private String currentName(UUID authorId, String storedName) {
+        User user = userRepository.findById(authorId).orElse(null);
+        if (user == null) {
+            return storedName;
+        }
+        return user.getName();
+    }
+
     private Map<String, Long> countReactions(List<CommunityReaction> reactions) {
         Map<String, Long> counts = new LinkedHashMap<>();
         for (CommunityReaction reaction : reactions) {
@@ -388,12 +414,10 @@ public class CommunityServiceImpl implements CommunityService {
                 .findByTargetTypeAndTargetId(ReactionTargetType.POST, post.getId());
         return new PostResponse(
                 post.getId(),
-                post.getWorkspaceId(),
                 post.getAuthorId(),
-                post.getAuthorName(),
+                currentName(post.getAuthorId(), post.getAuthorName()),
                 post.getTitle(),
                 post.getContent(),
-                post.getPinnedAt() != null,
                 post.getPinnedAt(),
                 post.getEditedAt(),
                 commentRepository.countByPostId(post.getId()),
@@ -409,9 +433,8 @@ public class CommunityServiceImpl implements CommunityService {
                 .findByTargetTypeAndTargetId(ReactionTargetType.COMMENT, comment.getId());
         return new CommentResponse(
                 comment.getId(),
-                comment.getPostId(),
                 comment.getAuthorId(),
-                comment.getAuthorName(),
+                currentName(comment.getAuthorId(), comment.getAuthorName()),
                 comment.getContent(),
                 comment.getEditedAt(),
                 countReactions(reactions),

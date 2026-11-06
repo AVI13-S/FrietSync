@@ -11,6 +11,7 @@ import com.frietsync.backend.dto.community.UpdatePostRequest;
 import com.frietsync.backend.service.community.CommunityService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -29,6 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/workspaces/{workspaceId}/community")
 @RequiredArgsConstructor
@@ -106,7 +108,7 @@ public class CommunityController {
             @PathVariable UUID postId
     ) {
         PostResponse post = communityService.pinPost(workspaceId, userId, postId);
-        publish("POST_PINNED", workspaceId, postId, null, userId);
+        publish("POST_UPDATED", workspaceId, postId, null, userId);
         return post;
     }
 
@@ -117,7 +119,7 @@ public class CommunityController {
             @PathVariable UUID postId
     ) {
         PostResponse post = communityService.unpinPost(workspaceId, userId, postId);
-        publish("POST_UNPINNED", workspaceId, postId, null, userId);
+        publish("POST_UPDATED", workspaceId, postId, null, userId);
         return post;
     }
 
@@ -129,7 +131,7 @@ public class CommunityController {
             @Valid @RequestBody ReactionRequest request
     ) {
         PostResponse post = communityService.reactToPost(workspaceId, userId, postId, request);
-        publish("POST_REACTION_CHANGED", workspaceId, postId, null, userId);
+        publish("POST_UPDATED", workspaceId, postId, null, userId);
         return post;
     }
 
@@ -140,7 +142,7 @@ public class CommunityController {
             @PathVariable UUID postId
     ) {
         PostResponse post = communityService.removePostReaction(workspaceId, userId, postId);
-        publish("POST_REACTION_CHANGED", workspaceId, postId, null, userId);
+        publish("POST_UPDATED", workspaceId, postId, null, userId);
         return post;
     }
 
@@ -202,7 +204,7 @@ public class CommunityController {
             @Valid @RequestBody ReactionRequest request
     ) {
         CommentResponse comment = communityService.reactToComment(workspaceId, userId, postId, commentId, request);
-        publish("COMMENT_REACTION_CHANGED", workspaceId, postId, commentId, userId);
+        publish("COMMENT_UPDATED", workspaceId, postId, commentId, userId);
         return comment;
     }
 
@@ -214,12 +216,16 @@ public class CommunityController {
             @PathVariable UUID commentId
     ) {
         CommentResponse comment = communityService.removeCommentReaction(workspaceId, userId, postId, commentId);
-        publish("COMMENT_REACTION_CHANGED", workspaceId, postId, commentId, userId);
+        publish("COMMENT_UPDATED", workspaceId, postId, commentId, userId);
         return comment;
     }
 
     private void publish(String type, UUID workspaceId, UUID postId, UUID commentId, UUID actorId) {
-        CommunityEvent event = new CommunityEvent(type, workspaceId, postId, commentId, actorId);
-        messagingTemplate.convertAndSend("/topic/workspaces/" + workspaceId + "/community", event);
+        try {
+            CommunityEvent event = new CommunityEvent(type, postId, commentId, actorId);
+            messagingTemplate.convertAndSend("/topic/workspaces/" + workspaceId + "/community", event);
+        } catch (Exception ex) {
+            log.warn("Could not publish community event {}: {}", type, ex.getMessage());
+        }
     }
 }

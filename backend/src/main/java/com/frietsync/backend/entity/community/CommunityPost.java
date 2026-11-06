@@ -40,6 +40,7 @@ public class CommunityPost extends BaseEntity {
     @Column(name = "pinned_by")
     private UUID pinnedBy;
 
+    @Column(nullable = false, columnDefinition = "boolean default false")
     private boolean deleted;
 
     @Column(name = "deleted_at")
