@@ -33,6 +33,7 @@ public class DocumentServiceImpl implements DocumentService {
     private final ProjectAccess projectAccess;
     private final ProjectDocumentRepository documentRepository;
     private final UserRepository userRepository;
+    private final DocumentEmbeddingService documentEmbeddingService;
 
     @Override
     @Transactional(readOnly = true)
@@ -80,6 +81,7 @@ public class DocumentServiceImpl implements DocumentService {
         document.setCreatedBy(userId);
         document.setLastEditedBy(userId);
         document = documentRepository.save(document);
+        documentEmbeddingService.generateAndSaveEmbedding(document);
 
         return toResponse(document);
     }
@@ -114,6 +116,7 @@ public class DocumentServiceImpl implements DocumentService {
         }
         document.setLastEditedBy(userId);
         document = documentRepository.save(document);
+        documentEmbeddingService.generateAndSaveEmbedding(document);
 
         return toResponse(document);
     }
