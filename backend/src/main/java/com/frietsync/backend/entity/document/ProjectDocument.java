@@ -31,4 +31,7 @@ public class ProjectDocument extends BaseEntity {
 
     @Column(name = "last_edited_by", nullable = false)
     private UUID lastEditedBy;
+
+    @Column(name = "embedding", columnDefinition = "vector(1536)")
+    private String embedding;
 }
