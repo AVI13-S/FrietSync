@@ -128,7 +128,7 @@ public interface AccountCleanupRepository extends Repository<User, UUID> {
     void clearSprintReviewer(@Param("userId") UUID userId);
 
     @Modifying
-    @Query("delete from NotificationActor n where n.actorId = :userId")
+    @Query("delete from Notification n where n.actorId = :userId")
     void clearNotificationActor(@Param("userId") UUID userId);
 
     @Modifying

@@ -28,7 +28,7 @@ public interface SprintRepository extends JpaRepository<Sprint, UUID> {
 
     List<Sprint> findByIssueIdOrderByCreatedAtDesc(UUID issueId);
 
-    List<Sprint> findByIssueIdOrderByCreatedAtDescAndDeletedAtIsNull(UUID issueId);
+    List<Sprint> findByIssueIdAndDeletedAtIsNullOrderByCreatedAtDesc(UUID issueId);
 
     List<Sprint> findByIssueIdIn(List<UUID> issueIds);
 

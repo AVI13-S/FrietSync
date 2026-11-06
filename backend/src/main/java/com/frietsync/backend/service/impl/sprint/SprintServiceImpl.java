@@ -111,7 +111,7 @@ public class SprintServiceImpl implements SprintService {
                 .orElseThrow(() -> new ResourceNotFoundException("Issue not found"));
         checkMember(issue.getProjectId(), currentUserId);
         List<SprintResponse> responses = new ArrayList<>();
-        for (Sprint sprint : sprintRepository.findByIssueIdOrderByCreatedAtDescAndDeletedAtIsNull(issueId)) {
+        for (Sprint sprint : sprintRepository.findByIssueIdAndDeletedAtIsNullOrderByCreatedAtDesc(issueId)) {
             responses.add(toResponse(sprint));
         }
         return responses;
