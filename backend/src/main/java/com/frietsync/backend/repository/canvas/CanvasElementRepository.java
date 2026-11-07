@@ -11,7 +11,9 @@ import java.util.UUID;
 
 public interface CanvasElementRepository extends JpaRepository<CanvasElement, UUID> {
 
-    List<CanvasElement> findByCanvasIdOrderByZIndexAscCreatedAtAsc(UUID canvasId);
+    @Query("select e from CanvasElement e where e.canvasId = :canvasId "
+            + "order by e.zIndex asc, e.createdAt asc")
+    List<CanvasElement> findByCanvasIdOrderByZIndexAscCreatedAtAsc(@Param("canvasId") UUID canvasId);
 
     Optional<CanvasElement> findByIdAndCanvasId(UUID id, UUID canvasId);
 
