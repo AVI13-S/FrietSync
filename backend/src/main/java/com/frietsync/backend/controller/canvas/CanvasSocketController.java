@@ -1,13 +1,10 @@
 package com.frietsync.backend.controller.canvas;
 
 import com.frietsync.backend.config.security.StompPrincipals;
-import com.frietsync.backend.dto.canvas.CanvasDetailResponse;
 import com.frietsync.backend.dto.canvas.CanvasElementRequest;
 import com.frietsync.backend.dto.canvas.CanvasElementUpdateRequest;
 import com.frietsync.backend.dto.canvas.ConvertToIssueRequest;
 import com.frietsync.backend.dto.canvas.ConvertToIssueResponse;
-import com.frietsync.backend.dto.canvas.CreateCanvasRequest;
-import com.frietsync.backend.dto.canvas.RenameCanvasRequest;
 import com.frietsync.backend.exception.ForbiddenException;
 import com.frietsync.backend.service.canvas.CanvasService;
 import lombok.RequiredArgsConstructor;
@@ -25,26 +22,6 @@ import java.util.UUID;
 public class CanvasSocketController {
 
     private final CanvasService canvasService;
-
-    @MessageMapping("/projects/{projectId}/canvases/create")
-    @SendToUser(destinations = "/queue/canvas-created", broadcast = false)
-    public CanvasDetailResponse createCanvas(@DestinationVariable UUID projectId,
-                                             @Payload CreateCanvasRequest request,
-                                             Principal principal) {
-        return canvasService.createCanvas(projectId, request, userId(principal));
-    }
-
-    @MessageMapping("/canvases/{canvasId}/rename")
-    public void renameCanvas(@DestinationVariable UUID canvasId,
-                             @Payload RenameCanvasRequest request,
-                             Principal principal) {
-        canvasService.renameCanvas(canvasId, request, userId(principal));
-    }
-
-    @MessageMapping("/canvases/{canvasId}/delete")
-    public void deleteCanvas(@DestinationVariable UUID canvasId, Principal principal) {
-        canvasService.deleteCanvas(canvasId, userId(principal));
-    }
 
     @MessageMapping("/canvases/{canvasId}/elements/create")
     public void createElement(@DestinationVariable UUID canvasId,
