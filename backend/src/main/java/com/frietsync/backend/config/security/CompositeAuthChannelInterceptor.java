@@ -39,6 +39,9 @@ public class CompositeAuthChannelInterceptor implements ChannelInterceptor {
     private static final String ACTIVITY_SUFFIX = "/activity";
     private static final String APP_PROJECT_PREFIX = "/app/projects/";
     private static final String NOTIFICATION_DESTINATION = "/user/queue/notifications";
+    private static final String CANVAS_ERRORS_DESTINATION = "/user/queue/canvas-errors";
+    private static final String CANVAS_ISSUE_CREATED_DESTINATION = "/user/queue/canvas-issue-created";
+    private static final String CANVAS_TOPIC_PREFIX = "/topic/canvases/";
     private static final String COMMUNITY_TOPIC_PREFIX = "/topic/workspaces/";
     private static final String COMMUNITY_TOPIC_SUFFIX = "/community";
 
@@ -128,8 +131,32 @@ public class CompositeAuthChannelInterceptor implements ChannelInterceptor {
         UUID userId = userId(accessor);
         if (isCommunityTopic(destination)) {
             communityService.assertWorkspaceMember(communityWorkspaceId(destination), userId);
-        } else if (!NOTIFICATION_DESTINATION.equals(destination)) {
+        } else if (isCanvasTopic(destination)) {
+            return;
+        } else if (!isUserQueue(destination)) {
             chatService.assertProjectAccess(subscriptionProjectId(destination), userId);
+        }
+    }
+
+    private boolean isUserQueue(String destination) {
+        return NOTIFICATION_DESTINATION.equals(destination)
+                || CANVAS_ERRORS_DESTINATION.equals(destination)
+                || CANVAS_ISSUE_CREATED_DESTINATION.equals(destination);
+    }
+
+    private boolean isCanvasTopic(String destination) {
+        if (destination == null || !destination.startsWith(CANVAS_TOPIC_PREFIX)) {
+            return false;
+        }
+        String value = destination.substring(CANVAS_TOPIC_PREFIX.length());
+        try {
+            if (value.isBlank() || value.contains("/")) {
+                throw new IllegalArgumentException("Invalid canvas identifier");
+            }
+            UUID.fromString(value);
+            return true;
+        } catch (IllegalArgumentException ex) {
+            throw new AccessDeniedException("Invalid canvas identifier", ex);
         }
     }
 
