@@ -81,7 +81,7 @@ public class DocumentServiceImpl implements DocumentService {
         document.setCreatedBy(userId);
         document.setLastEditedBy(userId);
         document = documentRepository.save(document);
-        documentEmbeddingService.generateAndSaveEmbedding(document);
+        documentEmbeddingService.generateAndSaveChunks(document);
 
         return toResponse(document);
     }
@@ -116,7 +116,7 @@ public class DocumentServiceImpl implements DocumentService {
         }
         document.setLastEditedBy(userId);
         document = documentRepository.save(document);
-        documentEmbeddingService.generateAndSaveEmbedding(document);
+        documentEmbeddingService.generateAndSaveChunks(document);
 
         return toResponse(document);
     }

@@ -41,6 +41,7 @@ public class CompositeAuthChannelInterceptor implements ChannelInterceptor {
     private static final String NOTIFICATION_DESTINATION = "/user/queue/notifications";
     private static final String CANVAS_ERRORS_DESTINATION = "/user/queue/canvas-errors";
     private static final String CANVAS_ISSUE_CREATED_DESTINATION = "/user/queue/canvas-issue-created";
+    private static final String AI_CHAT_DESTINATION = "/user/queue/ai-chat";
     private static final String CANVAS_TOPIC_PREFIX = "/topic/canvases/";
     private static final String COMMUNITY_TOPIC_PREFIX = "/topic/workspaces/";
     private static final String COMMUNITY_TOPIC_SUFFIX = "/community";
@@ -141,7 +142,8 @@ public class CompositeAuthChannelInterceptor implements ChannelInterceptor {
     private boolean isUserQueue(String destination) {
         return NOTIFICATION_DESTINATION.equals(destination)
                 || CANVAS_ERRORS_DESTINATION.equals(destination)
-                || CANVAS_ISSUE_CREATED_DESTINATION.equals(destination);
+                || CANVAS_ISSUE_CREATED_DESTINATION.equals(destination)
+                || AI_CHAT_DESTINATION.equals(destination);
     }
 
     private boolean isCanvasTopic(String destination) {

@@ -82,6 +82,7 @@ public class IssueServiceImpl implements IssueService {
     private final ReleaseIssueRepository releaseIssueRepository;
     private final GitHubIssueLinkService githubIssueLinkService;
     private final NotificationPublisher notificationPublisher;
+    private final IssueEmbeddingService issueEmbeddingService;
 
     @Override
     public IssueResponse create(UUID projectId, IssueRequest r, UUID userId) {
@@ -145,6 +146,7 @@ public class IssueServiceImpl implements IssueService {
         issue.setEstimatedHours(estimatedHours);
         issue.setCreatedBy(userId);
         issueRepository.save(issue);
+        issueEmbeddingService.generateAndSaveEmbedding(issue);
         history.record(issue.getId(), userId, IssueHistoryAction.CREATED);
         return issue;
     }
@@ -209,6 +211,7 @@ public class IssueServiceImpl implements IssueService {
             validateMilestone(issue.getProjectId(), updatedMilestoneId, updatedStartDate, updatedDueDate);
         }
 
+        boolean embeddingChanged = r.getTitle() != null || r.getDescription() != null;
         if (r.getTitle() != null) {
             String title = r.getTitle().trim();
             if (title.isEmpty()) {
@@ -243,6 +246,9 @@ public class IssueServiceImpl implements IssueService {
         }
 
         issueRepository.save(issue);
+        if (embeddingChanged) {
+            issueEmbeddingService.generateAndSaveEmbedding(issue);
+        }
         if (!Objects.equals(previousMilestoneId, updatedMilestoneId)) {
             milestoneCompletionService.refresh(previousMilestoneId, userId);
             milestoneCompletionService.refresh(updatedMilestoneId, userId);
