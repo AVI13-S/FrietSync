@@ -20,7 +20,7 @@
       - frietsync-network
 
   postgres:
-    image: postgres:18
+    image: pgvector/pgvector:pg18
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-frietsync}
