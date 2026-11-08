@@ -6,6 +6,7 @@ import com.frietsync.backend.dto.chat.ChatMessageWindowResponse;
 import com.frietsync.backend.dto.chat.ChatAttachmentResponse;
 import com.frietsync.backend.dto.chat.ChatAttachmentPageResponse;
 import com.frietsync.backend.dto.chat.EditChatMessageRequest;
+import com.frietsync.backend.dto.chat.ForwardChatMessageRequest;
 import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.service.chat.ChatAttachmentService.AttachmentFile;
 import com.frietsync.backend.service.chat.ChatAttachmentService;
@@ -108,6 +109,17 @@ public class ChatController {
         ChatMessageResponse message = chatService.deleteMessage(projectId, userId, messageId);
         messagingTemplate.convertAndSend("/topic/projects/" + projectId + "/chat", message);
         return message;
+    }
+
+    @PostMapping("/messages/{messageId}/forward")
+    public ResponseEntity<ChatMessageResponse> forwardMessage(
+            @PathVariable UUID projectId,
+            @PathVariable UUID messageId,
+            @AuthenticationPrincipal UUID userId,
+            @Valid @RequestBody ForwardChatMessageRequest request) {
+        ChatMessageResponse message = chatService.forwardMessage(projectId, userId, messageId, request);
+        messagingTemplate.convertAndSend("/topic/projects/" + message.projectId() + "/chat", message);
+        return ResponseEntity.status(201).body(message);
     }
 
     @PostMapping(value = "/attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
