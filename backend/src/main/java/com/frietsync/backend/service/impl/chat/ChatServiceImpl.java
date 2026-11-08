@@ -6,6 +6,8 @@ import com.frietsync.backend.dto.chat.ChatMessagePageResponse;
 import com.frietsync.backend.dto.chat.ChatMessageWindowResponse;
 import com.frietsync.backend.dto.chat.ChatAttachmentResponse;
 import com.frietsync.backend.dto.chat.EditChatMessageRequest;
+import com.frietsync.backend.dto.chat.ChatTypingResponse;
+import com.frietsync.backend.dto.chat.ForwardChatMessageRequest;
 import com.frietsync.backend.entity.chat.ChatAttachment;
 import com.frietsync.backend.entity.chat.ChatMessage;
 import com.frietsync.backend.entity.notification.NotificationType;
@@ -247,6 +249,68 @@ public class ChatServiceImpl implements ChatService {
         assertProjectAccess(projectId, userId);
         return toResponses(chatMessageRepository
                 .findByProjectIdAndPinnedAtIsNotNullAndDeletedFalseOrderByPinnedAtDesc(projectId));
+    }
+
+    @Override
+    @Transactional
+    public ChatMessageResponse forwardMessage(UUID projectId, UUID userId, UUID messageId,
+                                              ForwardChatMessageRequest request) {
+        UUID targetProjectId = request.getTargetProjectId();
+        assertProjectAccess(projectId, userId);
+        assertProjectAccess(targetProjectId, userId);
+
+        ChatMessage original = findActiveMessage(projectId, messageId);
+        if (!StringUtils.hasText(original.getContent())) {
+            throw new BadRequestException("This message has no text to forward");
+        }
+
+        Project targetProject = projectRepository.findByIdForUpdate(targetProjectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
+        User sender = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        String originalSenderName = original.getSenderName();
+        if (original.isForwarded() && original.getForwardedFromSenderName() != null) {
+            originalSenderName = original.getForwardedFromSenderName();
+        }
+
+        ChatMessage forwarded = new ChatMessage();
+        forwarded.setProjectId(targetProjectId);
+        forwarded.setSenderId(userId);
+        forwarded.setSenderName(sender.getName());
+        forwarded.setContent(original.getContent());
+        forwarded.setForwarded(true);
+        forwarded.setForwardedFromSenderName(originalSenderName);
+        ChatMessage saved = chatMessageRepository.save(forwarded);
+
+        Set<UUID> recipients = new LinkedHashSet<>();
+        recipients.add(targetProject.getCreatedBy());
+        recipients.add(targetProject.getAdminId());
+        if (targetProject.getProjectManagerId() != null) {
+            recipients.add(targetProject.getProjectManagerId());
+        }
+        if (targetProject.getTeamLeadId() != null) {
+            recipients.add(targetProject.getTeamLeadId());
+        }
+        projectMemberRepository.findByProjectId(targetProjectId)
+                .forEach(member -> recipients.add(member.getUserId()));
+        recipients.removeAll(chatMuteRepository.findActiveMutedUserIds(targetProjectId, Instant.now()));
+
+        String title = "New message in " + targetProject.getName();
+        String notificationMessage = sender.getName() + " sent a message in " + targetProject.getName() + ".";
+        recipients.forEach(recipientId -> notificationPublisher.publishChatMessage(
+                recipientId, title, notificationMessage, targetProjectId, userId));
+
+        return ChatMessageResponse.fromEntity(saved, List.of());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ChatTypingResponse getTypingUser(UUID projectId, UUID userId) {
+        assertProjectAccess(projectId, userId);
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        return new ChatTypingResponse(userId, user.getName());
     }
 
     private ChatMessage findActiveMessage(UUID projectId, UUID messageId) {

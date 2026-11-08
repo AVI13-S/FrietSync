@@ -34,6 +34,7 @@ public class CompositeAuthChannelInterceptor implements ChannelInterceptor {
 
     private static final String SEND_PREFIX = "/app/projects/";
     private static final String CHAT_SUFFIX = "/chat";
+    private static final String TYPING_SUFFIX = "/chat/typing";
     private static final String TOPIC_PREFIX = "/topic/projects/";
     private static final String CALLS_SUFFIX = "/calls";
     private static final String ACTIVITY_SUFFIX = "/activity";
@@ -233,6 +234,10 @@ public class CompositeAuthChannelInterceptor implements ChannelInterceptor {
             } catch (IllegalArgumentException ex) {
                 throw new AccessDeniedException("Invalid project identifier", ex);
             }
+        }
+        if (destination != null && destination.startsWith(TOPIC_PREFIX)
+                && destination.endsWith(TYPING_SUFFIX)) {
+            return topicProjectId(destination, TYPING_SUFFIX);
         }
         return projectId(destination, TOPIC_PREFIX, CHAT_SUFFIX);
     }
