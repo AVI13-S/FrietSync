@@ -23,7 +23,9 @@ public record ChatMessageResponse(
         Instant editedAt,
         boolean pinned,
         Instant pinnedAt,
-        UUID pinnedBy
+        UUID pinnedBy,
+        boolean forwarded,
+        String forwardedFromSenderName
 ) {
 
     public static ChatMessageResponse fromEntity(ChatMessage message) {
@@ -64,7 +66,9 @@ public record ChatMessageResponse(
                 message.getEditedAt(),
                 pinned,
                 pinned ? message.getPinnedAt() : null,
-                pinned ? message.getPinnedBy() : null
+                pinned ? message.getPinnedBy() : null,
+                message.isForwarded(),
+                message.isForwarded() ? message.getForwardedFromSenderName() : null
         );
     }
 }

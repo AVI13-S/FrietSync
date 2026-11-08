@@ -37,6 +37,11 @@ public class ChatMessage extends BaseEntity {
 
     private boolean deleted;
 
+    private boolean forwarded;
+
+    @Column(name = "forwarded_from_sender_name")
+    private String forwardedFromSenderName;
+
     @Column(name = "edited_at")
     private Instant editedAt;
 

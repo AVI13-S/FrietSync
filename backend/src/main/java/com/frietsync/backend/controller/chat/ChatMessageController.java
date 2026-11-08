@@ -2,6 +2,7 @@ package com.frietsync.backend.controller.chat;
 
 import com.frietsync.backend.dto.chat.ChatMessageRequest;
 import com.frietsync.backend.dto.chat.ChatMessageResponse;
+import com.frietsync.backend.dto.chat.ChatTypingResponse;
 import com.frietsync.backend.service.chat.ChatService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +35,13 @@ public class ChatMessageController {
         UUID senderId = extractUserId(authentication);
         ChatMessageResponse message = chatService.sendMessage(projectId, senderId, request);
         messagingTemplate.convertAndSend("/topic/projects/" + projectId + "/chat", message);
+    }
+
+    @MessageMapping("/projects/{projectId}/chat/typing")
+    public void typing(@DestinationVariable UUID projectId, Authentication authentication) {
+        UUID userId = extractUserId(authentication);
+        ChatTypingResponse typing = chatService.getTypingUser(projectId, userId);
+        messagingTemplate.convertAndSend("/topic/projects/" + projectId + "/chat/typing", typing);
     }
 
     @MessageExceptionHandler

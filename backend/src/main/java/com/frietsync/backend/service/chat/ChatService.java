@@ -5,6 +5,8 @@ import com.frietsync.backend.dto.chat.EditChatMessageRequest;
 import com.frietsync.backend.dto.chat.ChatMessageResponse;
 import com.frietsync.backend.dto.chat.ChatMessagePageResponse;
 import com.frietsync.backend.dto.chat.ChatMessageWindowResponse;
+import com.frietsync.backend.dto.chat.ChatTypingResponse;
+import com.frietsync.backend.dto.chat.ForwardChatMessageRequest;
 
 import java.util.List;
 import java.util.UUID;
@@ -29,6 +31,11 @@ public interface ChatService {
     ChatMessageResponse unpinMessage(UUID projectId, UUID userId, UUID messageId);
 
     List<ChatMessageResponse> getPinnedMessages(UUID projectId, UUID userId);
+
+    ChatMessageResponse forwardMessage(UUID projectId, UUID userId, UUID messageId,
+                                       ForwardChatMessageRequest request);
+
+    ChatTypingResponse getTypingUser(UUID projectId, UUID userId);
 
     void assertProjectAccess(UUID projectId, UUID userId);
 }
