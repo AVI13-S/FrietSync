@@ -9,4 +9,6 @@ public interface DocumentChunkSearchResult {
     String getTitle();
 
     String getContent();
+
+    double getSimilarity();
 }

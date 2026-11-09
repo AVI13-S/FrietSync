@@ -14,8 +14,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -28,6 +31,8 @@ public class RagChatServiceImpl implements RagChatService {
 
     private static final int MAX_CHUNKS = 8;
     private static final int MAX_QUESTION_LENGTH = 1000;
+    private static final int MAX_QUESTIONS_PER_MINUTE = 10;
+    private static final long ONE_MINUTE_MS = 60000;
 
     private static final String AI_UNAVAILABLE =
             "The AI service is not available right now. Please try again later.";
@@ -45,6 +50,11 @@ public class RagChatServiceImpl implements RagChatService {
     private final IssueRepository issueRepository;
     private final EmbeddingModel embeddingModel;
     private final ChatClient chatClient;
+
+    @Value("${app.ai.rag-min-similarity:0.3}")
+    private double minSimilarity;
+
+    private final Map<UUID, List<Long>> recentQuestions = new HashMap<>();
 
     public RagChatServiceImpl(ProjectAccess access,
                               ProjectDocumentChunkRepository chunkRepository,
@@ -75,6 +85,8 @@ public class RagChatServiceImpl implements RagChatService {
             throw new BadRequestException("Question is too long (max " + MAX_QUESTION_LENGTH + " characters)");
         }
 
+        checkRateLimit(userId);
+
         List<DocumentChunkSearchResult> chunks = findRelevantChunks(projectId, question);
 
         RagChatResponse response = new RagChatResponse();
@@ -93,6 +105,25 @@ public class RagChatServiceImpl implements RagChatService {
         return response;
     }
 
+    private synchronized void checkRateLimit(UUID userId) {
+        long now = System.currentTimeMillis();
+        List<Long> times = new ArrayList<>();
+        List<Long> oldTimes = recentQuestions.get(userId);
+        if (oldTimes != null) {
+            for (Long time : oldTimes) {
+                if (now - time < ONE_MINUTE_MS) {
+                    times.add(time);
+                }
+            }
+        }
+        if (times.size() >= MAX_QUESTIONS_PER_MINUTE) {
+            recentQuestions.put(userId, times);
+            throw new BadRequestException("You are asking too many questions. Please wait a minute and try again.");
+        }
+        times.add(now);
+        recentQuestions.put(userId, times);
+    }
+
     private List<DocumentChunkSearchResult> findRelevantChunks(UUID projectId, String question) {
         String queryEmbedding;
         try {
@@ -103,7 +134,7 @@ public class RagChatServiceImpl implements RagChatService {
             throw new AiServiceException(AI_UNAVAILABLE);
         }
 
-        return chunkRepository.searchSimilarChunks(projectId, queryEmbedding, MAX_CHUNKS);
+        return chunkRepository.searchSimilarChunks(projectId, queryEmbedding, MAX_CHUNKS, minSimilarity);
     }
 
     private String askAi(Project project, String question, List<DocumentChunkSearchResult> chunks) {

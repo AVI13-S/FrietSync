@@ -1,7 +1,6 @@
 package com.frietsync.backend.service.impl.sprint;
 
 import com.frietsync.backend.entity.sprint.Sprint;
-import com.frietsync.backend.exception.AiServiceException;
 import com.frietsync.backend.repository.sprint.SprintRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -29,18 +28,18 @@ public class SprintEmbeddingService {
 
     private void generate(Sprint sprint, boolean onlyIfMissing) {
         String text = "Sprint: " + sprint.getName() + "\nGoal: "
-                + (sprint.getGoal() == null ? "" : sprint.getGoal())
-                + "\nStatus: " + sprint.getStatus();
+                + (sprint.getGoal() == null ? "" : sprint.getGoal());
+        String vector;
         try {
-            String vector = formatVector(embeddingModel.embed(text));
-            if (onlyIfMissing) {
-                sprintRepository.updateEmbeddingIfMissing(sprint.getId(), vector);
-            } else {
-                sprintRepository.updateEmbedding(sprint.getId(), vector);
-            }
+            vector = formatVector(embeddingModel.embed(text));
         } catch (RuntimeException ex) {
-            LOG.error("Embedding sprint {} failed", sprint.getId(), ex);
-            throw new AiServiceException("The AI service is not available right now. Please try again later.");
+            LOG.warn("Embedding sprint {} failed: {}", sprint.getId(), ex.getMessage());
+            return;
+        }
+        if (onlyIfMissing) {
+            sprintRepository.updateEmbeddingIfMissing(sprint.getId(), vector);
+        } else {
+            sprintRepository.updateEmbedding(sprint.getId(), vector);
         }
     }
 
