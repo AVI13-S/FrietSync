@@ -170,7 +170,6 @@ public class SprintServiceImpl implements SprintService {
         }
         sprint.setStatus(request.status());
         Sprint updatedSprint = sprintRepository.save(sprint);
-        sprintEmbeddingService.generateAndSave(updatedSprint);
         return toResponse(updatedSprint);
     }
 
@@ -190,7 +189,6 @@ public class SprintServiceImpl implements SprintService {
 
         sprint.setStatus(SprintStatus.ACTIVE);
         Sprint updatedSprint = sprintRepository.save(sprint);
-        sprintEmbeddingService.generateAndSave(updatedSprint);
         return toResponse(updatedSprint);
     }
 
@@ -206,7 +204,6 @@ public class SprintServiceImpl implements SprintService {
         }
         sprint.setStatus(SprintStatus.COMPLETED);
         Sprint updatedSprint = sprintRepository.save(sprint);
-        sprintEmbeddingService.generateAndSave(updatedSprint);
         return toResponse(updatedSprint);
     }
 

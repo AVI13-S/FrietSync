@@ -1,7 +1,6 @@
 package com.frietsync.backend.service.impl.issue;
 
 import com.frietsync.backend.entity.issue.Issue;
-import com.frietsync.backend.exception.AiServiceException;
 import com.frietsync.backend.repository.issue.IssueRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -42,8 +41,8 @@ public class IssueEmbeddingService {
         try {
             vector = embeddingModel.embed(text.toString());
         } catch (RuntimeException ex) {
-            LOG.error("Embedding issue {} failed", issue.getId(), ex);
-            throw new AiServiceException("The AI service is not available right now. Please try again later.");
+            LOG.warn("Embedding issue {} failed: {}", issue.getId(), ex.getMessage());
+            return;
         }
         String embedding = formatVector(vector);
         if (onlyIfMissing) {

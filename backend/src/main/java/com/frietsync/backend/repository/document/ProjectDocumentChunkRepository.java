@@ -12,16 +12,21 @@ public interface ProjectDocumentChunkRepository extends JpaRepository<ProjectDoc
 
     void deleteByDocumentId(UUID documentId);
 
-    @Query(value = "SELECT d.id AS \"documentId\", d.title AS title, "
-            + "LEFT(COALESCE(c.content, d.content), 1500) AS content "
+    @Query(value = "SELECT * FROM ("
+            + "SELECT d.id AS \"documentId\", d.title AS title, "
+            + "LEFT(COALESCE(c.content, d.content), 1500) AS content, "
+            + "1 - (COALESCE(c.embedding, d.embedding) <=> CAST(:queryEmbedding AS vector)) AS similarity "
             + "FROM project_documents d "
             + "LEFT JOIN project_document_chunks c ON c.document_id = d.id "
-            + "WHERE d.project_id = :projectId AND (c.id IS NOT NULL OR d.embedding IS NOT NULL) "
-            + "ORDER BY COALESCE(c.embedding, d.embedding) <=> CAST(:queryEmbedding AS vector) "
+            + "WHERE d.project_id = :projectId AND (c.id IS NOT NULL OR d.embedding IS NOT NULL)"
+            + ") AS matches "
+            + "WHERE similarity >= :minSimilarity "
+            + "ORDER BY similarity DESC "
             + "LIMIT :limit",
             nativeQuery = true)
     List<DocumentChunkSearchResult> searchSimilarChunks(
             @Param("projectId") UUID projectId,
             @Param("queryEmbedding") String queryEmbedding,
-            @Param("limit") int limit);
+            @Param("limit") int limit,
+            @Param("minSimilarity") double minSimilarity);
 }

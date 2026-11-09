@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +32,9 @@ public class SemanticSearchService {
     private final EmbeddingModel embeddingModel;
     private final IssueRepository issueRepository;
     private final SprintRepository sprintRepository;
+
+    @Value("${app.ai.search-min-similarity:0.3}")
+    private double minSimilarity;
 
     @Transactional(readOnly = true)
     public List<SemanticIssueResult> search(String query, UUID userId) {
@@ -55,12 +59,14 @@ public class SemanticSearchService {
 
         List<SemanticIssueResult> issueResults = issueRepository.searchSemanticallyForUser(userId, vector, MAX_RESULTS)
                 .stream()
+                .filter(row -> row.getSimilarity() >= minSimilarity)
                 .map(this::toResult)
                 .collect(Collectors.toList());
         results.addAll(issueResults);
 
         List<SemanticIssueResult> sprintResults = sprintRepository.searchSemanticallyForUser(userId, vector, MAX_RESULTS)
                 .stream()
+                .filter(row -> row.getSimilarity() >= minSimilarity)
                 .map(this::toSprintResult)
                 .collect(Collectors.toList());
         results.addAll(sprintResults);
