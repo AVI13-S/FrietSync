@@ -37,11 +37,12 @@ public class RagChatSocketController {
                     Authentication authentication) {
         UUID userId = currentUserId(authentication);
         UUID requestId = UUID.randomUUID();
-        send(userId, new RagChatSocketEvent("started", requestId, null, null));
+        send(userId, new RagChatSocketEvent("started", requestId, null, null, null));
 
         try {
-            RagChatResponse response = ragChatService.askRagChatbot(projectId, request.getQuestion(), userId);
-            send(userId, new RagChatSocketEvent("completed", requestId, response, null));
+            RagChatResponse response = ragChatService.askRagChatbotStreaming(projectId, request.getQuestion(), userId,
+                    piece -> send(userId, new RagChatSocketEvent("chunk", requestId, null, null, piece)));
+            send(userId, new RagChatSocketEvent("completed", requestId, response, null, null));
         } catch (RuntimeException ex) {
             LOG.error("WebSocket AI chat failed for user {} in project {}", userId, projectId, ex);
             String message = ex instanceof BadRequestException
@@ -49,7 +50,7 @@ public class RagChatSocketController {
                     || ex instanceof ForbiddenException
                     ? ex.getMessage()
                     : "The AI chat request failed. Please try again.";
-            send(userId, new RagChatSocketEvent("error", requestId, null, message));
+            send(userId, new RagChatSocketEvent("error", requestId, null, message, null));
         }
     }
 
