@@ -91,6 +91,29 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
             @Param("queryEmbedding") String queryEmbedding,
             @Param("limit") int limit);
 
+    @Query(value = "SELECT i.id AS \"issueId\", i.project_id AS \"projectId\", p.name AS \"projectName\", "
+            + "i.title AS title, i.description AS description, i.status AS status, i.priority AS priority, "
+            + "1 - (i.embedding <=> CAST(:queryEmbedding AS vector)) AS similarity "
+            + "FROM issues i JOIN projects p ON p.id = i.project_id "
+            + "WHERE i.project_id = :projectId AND i.embedding IS NOT NULL AND i.deleted_at IS NULL "
+            + "ORDER BY i.embedding <=> CAST(:queryEmbedding AS vector) LIMIT :limit",
+            nativeQuery = true)
+    List<SemanticIssueSearchResult> searchSemanticallyInProject(
+            @Param("projectId") UUID projectId,
+            @Param("queryEmbedding") String queryEmbedding,
+            @Param("limit") int limit);
+
+    @Query("select i from Issue i where i.projectId = :projectId and i.deletedAt is null and i.id in "
+            + "(select a.issueId from IssueAssignee a where a.userId = :userId) "
+            + "order by i.updatedAt desc")
+    List<Issue> findAssignedToUserInProject(@Param("projectId") UUID projectId,
+                                            @Param("userId") UUID userId,
+                                            Pageable pageable);
+
+    @Query("select u.name from User u where u.id in "
+            + "(select a.userId from IssueAssignee a where a.issueId = :issueId) order by u.name")
+    List<String> findAssigneeNames(@Param("issueId") UUID issueId);
+
     @Query("select i from Issue i where i.projectId = :projectId and i.deletedAt is null "
             + "and (:status is null or i.status = :status) "
             + "and (lower(i.title) like lower(concat('%', :query, '%')) "

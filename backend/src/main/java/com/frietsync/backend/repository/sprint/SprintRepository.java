@@ -22,6 +22,8 @@ public interface SprintRepository extends JpaRepository<Sprint, UUID> {
 
     List<Sprint> findByProjectIdAndDeletedAtIsNull(UUID projectId);
 
+    List<Sprint> findByProjectIdAndDeletedAtIsNullOrderBySprintNumberDesc(UUID projectId);
+
     List<Sprint> findByIssueId(UUID issueId);
 
     List<Sprint> findByIssueIdAndDeletedAtIsNull(UUID issueId);
@@ -46,7 +48,7 @@ public interface SprintRepository extends JpaRepository<Sprint, UUID> {
             + "and sprint.projectId in (select project.id from Project project "
             + "where project.workspaceId = :workspaceId and project.deletedAt is null) order by sprint.createdAt desc")
     List<Sprint> findAssignedToUserInWorkspace(@Param("userId") UUID userId,
-                                              @Param("workspaceId") UUID workspaceId);
+                                               @Param("workspaceId") UUID workspaceId);
 
     long countByProjectId(UUID projectId);
 

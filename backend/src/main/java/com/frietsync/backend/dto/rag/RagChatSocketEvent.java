@@ -6,6 +6,7 @@ public record RagChatSocketEvent(
         String type,
         UUID requestId,
         RagChatResponse response,
-        String error
+        String error,
+        String text
 ) {
 }
