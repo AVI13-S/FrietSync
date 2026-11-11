@@ -7,6 +7,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.hibernate.annotations.DynamicUpdate;
@@ -76,6 +77,7 @@ public class CanvasElement extends BaseEntity {
     @Column(name = "updated_by")
     private UUID updatedBy;
 
+    @Version
     @Column(nullable = false)
     private long revision = 0;
 }

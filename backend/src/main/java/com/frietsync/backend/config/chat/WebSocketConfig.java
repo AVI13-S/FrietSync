@@ -1,6 +1,7 @@
 package com.frietsync.backend.config.chat;
 
 import com.frietsync.backend.config.security.CompositeAuthChannelInterceptor;
+import com.frietsync.backend.config.security.CanvasOutboundAuthorizationInterceptor;
 import com.frietsync.backend.config.security.RealtimeTopicGuard;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -18,6 +19,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final CompositeAuthChannelInterceptor compositeAuthChannelInterceptor;
     private final RealtimeTopicGuard realtimeTopicGuard;
+    private final CanvasOutboundAuthorizationInterceptor canvasOutboundAuthorizationInterceptor;
 
     @Value("${app.cors.allowed-origins:https://frietsync.me}")
     private String allowedOriginsRaw;
@@ -38,5 +40,10 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
         registration.interceptors(compositeAuthChannelInterceptor, realtimeTopicGuard);
+    }
+
+    @Override
+    public void configureClientOutboundChannel(ChannelRegistration registration) {
+        registration.interceptors(canvasOutboundAuthorizationInterceptor);
     }
 }

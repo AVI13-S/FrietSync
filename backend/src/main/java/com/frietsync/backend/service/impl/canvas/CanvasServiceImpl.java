@@ -16,11 +16,13 @@ import com.frietsync.backend.dto.issue.IssueResponse;
 import com.frietsync.backend.dto.issue.IssueSummaryResponse;
 import com.frietsync.backend.entity.canvas.Canvas;
 import com.frietsync.backend.entity.canvas.CanvasElement;
+import com.frietsync.backend.entity.canvas.CanvasElementType;
 import com.frietsync.backend.entity.issue.Issue;
 import com.frietsync.backend.entity.project.Project;
 import com.frietsync.backend.entity.user.Role;
 import com.frietsync.backend.entity.user.User;
 import com.frietsync.backend.exception.BadRequestException;
+import com.frietsync.backend.exception.CanvasConflictException;
 import com.frietsync.backend.exception.ForbiddenException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.repository.canvas.CanvasElementRepository;
@@ -105,6 +107,7 @@ public class CanvasServiceImpl implements CanvasService {
         events.publishEvent(CanvasEvent.builder()
                 .type(CanvasEventType.CANVAS_RENAMED)
                 .canvasId(canvasId)
+                .projectId(canvas.getProjectId())
                 .actorId(userId)
                 .name(canvas.getName())
                 .occurredAt(Instant.now())
@@ -134,6 +137,7 @@ public class CanvasServiceImpl implements CanvasService {
         events.publishEvent(CanvasEvent.builder()
                 .type(CanvasEventType.CANVAS_DELETED)
                 .canvasId(canvasId)
+                .projectId(canvas.getProjectId())
                 .actorId(userId)
                 .occurredAt(Instant.now())
                 .build());
@@ -152,6 +156,9 @@ public class CanvasServiceImpl implements CanvasService {
         Canvas canvas = findCanvas(canvasId);
         requireEditor(canvas.getProjectId(), userId);
 
+        if (r == null) {
+            throw new BadRequestException("Canvas item details are required");
+        }
         if (r.getType() == null) {
             throw new BadRequestException("Item type is required");
         }
@@ -159,6 +166,7 @@ public class CanvasServiceImpl implements CanvasService {
             throw new BadRequestException("Item position (x and y) is required");
         }
         checkFieldLengths(r.getText(), r.getColor(), r.getShape());
+        validateConnectorEndpoints(canvasId, r.getType(), null, r.getFromElementId(), r.getToElementId());
         if (elementRepository.countByCanvasId(canvasId) >= MAX_ELEMENTS_PER_CANVAS) {
             throw new BadRequestException("A canvas can have at most " + MAX_ELEMENTS_PER_CANVAS + " items");
         }
@@ -187,7 +195,7 @@ public class CanvasServiceImpl implements CanvasService {
         element.setUpdatedBy(userId);
 
         element = elementRepository.save(element);
-        publishUpsert(canvasId, userId, element);
+        publishUpsert(canvas, userId, element);
         return toElementResponse(element);
     }
 
@@ -197,52 +205,63 @@ public class CanvasServiceImpl implements CanvasService {
         Canvas canvas = findCanvas(canvasId);
         requireEditor(canvas.getProjectId(), userId);
         CanvasElement element = findElement(canvasId, elementId);
+        if (r == null || r.getRevision() == null) {
+            throw new BadRequestException("Canvas item revision is required");
+        }
+        if (r.getRevision() != element.getRevision()) {
+            throw new CanvasConflictException("Canvas item changed. Reload it before applying your update.");
+        }
         checkFieldLengths(r.getText(), r.getColor(), r.getShape());
 
-        if (r.getShape() != null) {
+        if (r.isProvided("shape")) {
             element.setShape(r.getShape());
         }
-        if (r.getX() != null) {
+        if (r.isProvided("x")) {
+            requireNonNull(r.getX(), "x");
             element.setX(r.getX());
         }
-        if (r.getY() != null) {
+        if (r.isProvided("y")) {
+            requireNonNull(r.getY(), "y");
             element.setY(r.getY());
         }
-        if (r.getWidth() != null) {
+        if (r.isProvided("width")) {
             element.setWidth(r.getWidth());
         }
-        if (r.getHeight() != null) {
+        if (r.isProvided("height")) {
             element.setHeight(r.getHeight());
         }
-        if (r.getEndX() != null) {
+        if (r.isProvided("endX")) {
             element.setEndX(r.getEndX());
         }
-        if (r.getEndY() != null) {
+        if (r.isProvided("endY")) {
             element.setEndY(r.getEndY());
         }
-        if (r.getFromElementId() != null) {
+        if (r.isProvided("fromElementId")) {
             element.setFromElementId(r.getFromElementId());
         }
-        if (r.getToElementId() != null) {
+        if (r.isProvided("toElementId")) {
             element.setToElementId(r.getToElementId());
         }
-        if (r.getRotation() != null) {
+        if (r.isProvided("rotation")) {
+            requireNonNull(r.getRotation(), "rotation");
             element.setRotation(r.getRotation());
         }
-        if (r.getZIndex() != null) {
+        if (r.isProvided("zIndex")) {
+            requireNonNull(r.getZIndex(), "zIndex");
             element.setZIndex(r.getZIndex());
         }
-        if (r.getText() != null) {
+        if (r.isProvided("text")) {
             element.setText(r.getText());
         }
-        if (r.getColor() != null) {
+        if (r.isProvided("color")) {
             element.setColor(r.getColor());
         }
 
+        validateConnectorEndpoints(canvasId, element.getType(), elementId,
+                element.getFromElementId(), element.getToElementId());
         element.setUpdatedBy(userId);
-        element.setRevision(element.getRevision() + 1);
-        element = elementRepository.save(element);
-        publishUpsert(canvasId, userId, element);
+        element = elementRepository.saveAndFlush(element);
+        publishUpsert(canvas, userId, element);
         return toElementResponse(element);
     }
 
@@ -269,6 +288,7 @@ public class CanvasServiceImpl implements CanvasService {
         events.publishEvent(CanvasEvent.builder()
                 .type(CanvasEventType.ELEMENTS_DELETED)
                 .canvasId(canvasId)
+                .projectId(canvas.getProjectId())
                 .actorId(userId)
                 .elementIds(deletedIds)
                 .occurredAt(Instant.now())
@@ -279,10 +299,12 @@ public class CanvasServiceImpl implements CanvasService {
     public ConvertToIssueResponse convertToIssue(UUID canvasId, UUID elementId,
                                                  ConvertToIssueRequest request, UUID userId) {
         Canvas canvas = findCanvas(canvasId);
-        Project project = access.project(canvas.getProjectId());
-        access.requireMember(project, userId);
+        requireEditor(canvas.getProjectId(), userId);
         CanvasElement element = findElement(canvasId, elementId);
 
+        if (request == null) {
+            throw new BadRequestException("Issue details are required");
+        }
         if (request.getTitle() == null || request.getTitle().trim().isEmpty()) {
             throw new BadRequestException("Issue title is required");
         }
@@ -305,9 +327,8 @@ public class CanvasServiceImpl implements CanvasService {
 
         element.setIssueId(issue.getId());
         element.setUpdatedBy(userId);
-        element.setRevision(element.getRevision() + 1);
-        element = elementRepository.save(element);
-        publishUpsert(canvasId, userId, element);
+        element = elementRepository.saveAndFlush(element);
+        publishUpsert(canvas, userId, element);
 
         return ConvertToIssueResponse.builder()
                 .element(toElementResponse(element))
@@ -364,16 +385,46 @@ public class CanvasServiceImpl implements CanvasService {
         return issue != null && issue.getDeletedAt() == null;
     }
 
-    private void publishUpsert(UUID canvasId, UUID actorId, CanvasElement element) {
+    private void publishUpsert(Canvas canvas, UUID actorId, CanvasElement element) {
         List<CanvasElement> one = new ArrayList<>();
         one.add(element);
         events.publishEvent(CanvasEvent.builder()
                 .type(CanvasEventType.ELEMENTS_UPSERTED)
-                .canvasId(canvasId)
+                .canvasId(canvas.getId())
+                .projectId(canvas.getProjectId())
                 .actorId(actorId)
                 .elements(toElementResponses(one))
                 .occurredAt(Instant.now())
                 .build());
+    }
+
+    private void validateConnectorEndpoints(UUID canvasId,
+                                            CanvasElementType type,
+                                            UUID elementId,
+                                            UUID fromElementId,
+                                            UUID toElementId) {
+        if (type != CanvasElementType.ARROW
+                && (fromElementId != null || toElementId != null)) {
+            throw new BadRequestException("Only arrows can reference other canvas items");
+        }
+        validateConnectorEndpoint(canvasId, elementId, fromElementId);
+        validateConnectorEndpoint(canvasId, elementId, toElementId);
+    }
+
+    private void validateConnectorEndpoint(UUID canvasId, UUID elementId, UUID endpointId) {
+        if (endpointId == null) {
+            return;
+        }
+        if (endpointId.equals(elementId)) {
+            throw new BadRequestException("An arrow cannot connect to itself");
+        }
+        findElement(canvasId, endpointId);
+    }
+
+    private void requireNonNull(Object value, String field) {
+        if (value == null) {
+            throw new BadRequestException(field + " cannot be null");
+        }
     }
 
     private CanvasDetailResponse buildDetail(Canvas canvas, List<CanvasElement> elements) {

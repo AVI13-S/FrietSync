@@ -38,6 +38,7 @@ public class CompositeAuthChannelInterceptor implements ChannelInterceptor {
     private static final String CALLS_SUFFIX = "/calls";
     private static final String ACTIVITY_SUFFIX = "/activity";
     private static final String APP_PROJECT_PREFIX = "/app/projects/";
+    private static final String APPLICATION_PREFIX = "/app/";
     private static final String NOTIFICATION_DESTINATION = "/user/queue/notifications";
     private static final String CANVAS_ERRORS_DESTINATION = "/user/queue/canvas-errors";
     private static final String CANVAS_ISSUE_CREATED_DESTINATION = "/user/queue/canvas-issue-created";
@@ -74,6 +75,9 @@ public class CompositeAuthChannelInterceptor implements ChannelInterceptor {
             }
         } else if (accessor.getCommand() == StompCommand.SEND) {
             String destination = accessor.getDestination();
+            if (destination == null || !destination.startsWith(APPLICATION_PREFIX)) {
+                throw new AccessDeniedException("Client messages must use an application destination");
+            }
             if (destination != null && destination.startsWith(SEND_PREFIX) && destination.endsWith(CHAT_SUFFIX)) {
                 chatService.assertProjectAccess(
                         projectId(destination, SEND_PREFIX, CHAT_SUFFIX),

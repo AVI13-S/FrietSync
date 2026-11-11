@@ -12,6 +12,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -248,6 +249,12 @@ public class GlobalExceptionHandler {
         if (ex instanceof BadRequestException) {
             status = 400;
             text = ex.getMessage();
+        } else if (ex instanceof CanvasConflictException
+                || ex instanceof OptimisticLockingFailureException) {
+            status = 409;
+            text = ex instanceof CanvasConflictException
+                    ? ex.getMessage()
+                    : "Canvas item changed. Reload it before applying your update.";
         } else if (ex instanceof ForbiddenException) {
             status = 403;
             text = ex.getMessage();

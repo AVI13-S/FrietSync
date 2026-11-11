@@ -13,6 +13,7 @@ public class CanvasEvent {
 
     private CanvasEventType type;
     private UUID canvasId;
+    private UUID projectId;
     private UUID actorId;
     private List<CanvasElementResponse> elements;
     private List<UUID> elementIds;
