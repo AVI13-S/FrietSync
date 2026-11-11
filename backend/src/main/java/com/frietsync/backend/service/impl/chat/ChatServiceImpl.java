@@ -167,6 +167,7 @@ public class ChatServiceImpl implements ChatService {
         message.getMentionedUserIds().addAll(mentionedIds);
         message.setEditedAt(Instant.now());
         ChatMessage saved = chatMessageRepository.save(message);
+        chatMessageRepository.clearEmbedding(messageId);
 
         String senderName = saved.getSenderName();
         String mentionTitle = "You were mentioned in " + project.getName();
