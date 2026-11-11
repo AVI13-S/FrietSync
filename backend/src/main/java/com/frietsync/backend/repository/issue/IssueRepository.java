@@ -81,6 +81,9 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
             + "JOIN users u ON u.id = :userId AND u.workspace_id = p.workspace_id "
             + "JOIN workspaces w ON w.id = p.workspace_id AND w.deletion_requested_at IS NULL "
             + "WHERE i.embedding IS NOT NULL AND i.deleted_at IS NULL AND p.deleted_at IS NULL "
+            + "AND (CAST(:projectId AS varchar) IS NULL "
+            + "OR p.id = CAST(CAST(:projectId AS varchar) AS uuid)) "
+            + "AND (CAST(:status AS varchar) IS NULL OR CAST(i.status AS varchar) = CAST(:status AS varchar)) "
             + "AND (p.admin_id = :userId OR p.project_manager_id = :userId OR p.team_lead_id = :userId "
             + "OR EXISTS (SELECT 1 FROM project_members pm "
             + "WHERE pm.project_id = p.id AND pm.user_id = :userId)) "
@@ -89,6 +92,8 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
     List<SemanticIssueSearchResult> searchSemanticallyForUser(
             @Param("userId") UUID userId,
             @Param("queryEmbedding") String queryEmbedding,
+            @Param("projectId") String projectId,
+            @Param("status") String status,
             @Param("limit") int limit);
 
     @Query(value = "SELECT i.id AS \"issueId\", i.project_id AS \"projectId\", p.name AS \"projectName\", "

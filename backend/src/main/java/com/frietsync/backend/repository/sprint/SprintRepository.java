@@ -87,11 +87,16 @@ public interface SprintRepository extends JpaRepository<Sprint, UUID> {
             + "JOIN users u ON u.id = :userId AND u.workspace_id = p.workspace_id "
             + "JOIN workspaces w ON w.id = p.workspace_id AND w.deletion_requested_at IS NULL "
             + "WHERE s.embedding IS NOT NULL AND s.deleted_at IS NULL AND p.deleted_at IS NULL "
+            + "AND (CAST(:projectId AS varchar) IS NULL "
+            + "OR p.id = CAST(CAST(:projectId AS varchar) AS uuid)) "
+            + "AND (CAST(:status AS varchar) IS NULL OR CAST(s.status AS varchar) = CAST(:status AS varchar)) "
             + "AND (p.admin_id = :userId OR p.project_manager_id = :userId OR p.team_lead_id = :userId "
             + "OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = :userId)) "
             + "ORDER BY s.embedding <=> CAST(:queryEmbedding AS vector) LIMIT :limit", nativeQuery = true)
     List<SprintSemanticSearchResult> searchSemanticallyForUser(
             @Param("userId") UUID userId,
             @Param("queryEmbedding") String queryEmbedding,
+            @Param("projectId") String projectId,
+            @Param("status") String status,
             @Param("limit") int limit);
 }
