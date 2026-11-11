@@ -12,6 +12,8 @@ public record SemanticIssueResult(
         String description,
         String status,
         String priority,
-        double similarity
+        double similarity,
+        UUID documentId,
+        UUID messageId
 ) {
 }

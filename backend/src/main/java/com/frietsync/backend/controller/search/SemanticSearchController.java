@@ -21,7 +21,10 @@ public class SemanticSearchController {
 
     @GetMapping("/semantic")
     public List<SemanticIssueResult> search(@RequestParam("q") String query,
+                                            @RequestParam(value = "projectId", required = false) UUID projectId,
+                                            @RequestParam(value = "type", required = false) String type,
+                                            @RequestParam(value = "status", required = false) String status,
                                             @AuthenticationPrincipal UUID userId) {
-        return semanticSearchService.search(query, userId);
+        return semanticSearchService.search(query, projectId, type, status, userId);
     }
 }
