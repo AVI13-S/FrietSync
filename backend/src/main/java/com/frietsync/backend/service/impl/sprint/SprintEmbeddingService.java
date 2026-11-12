@@ -34,6 +34,9 @@ public class SprintEmbeddingService {
             vector = formatVector(embeddingModel.embed(text));
         } catch (RuntimeException ex) {
             LOG.warn("Embedding sprint {} failed: {}", sprint.getId(), ex.getMessage());
+            if (!onlyIfMissing) {
+                sprintRepository.clearEmbedding(sprint.getId());
+            }
             return;
         }
         if (onlyIfMissing) {

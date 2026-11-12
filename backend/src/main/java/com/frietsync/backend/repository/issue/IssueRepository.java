@@ -145,6 +145,10 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
     List<Issue> findResolvedBy(@Param("userId") UUID userId);
 
     @Modifying
+    @Query(value = "UPDATE issues SET embedding = NULL WHERE id = :issueId", nativeQuery = true)
+    int clearEmbedding(@Param("issueId") UUID issueId);
+
+    @Modifying
     @Query("update Issue i set i.githubIssueNumber = null, i.githubIssueTitle = null, "
             + "i.githubIssueUrl = null, i.githubIssueRepository = null where i.projectId = :projectId")
     int clearGitHubLinksByProjectId(@Param("projectId") UUID projectId);

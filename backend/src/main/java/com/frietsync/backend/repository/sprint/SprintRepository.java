@@ -76,6 +76,10 @@ public interface SprintRepository extends JpaRepository<Sprint, UUID> {
             + "WHERE id = :sprintId AND embedding IS NULL", nativeQuery = true)
     int updateEmbeddingIfMissing(@Param("sprintId") UUID sprintId, @Param("embedding") String embedding);
 
+    @Modifying
+    @Query(value = "UPDATE sprints SET embedding = NULL WHERE id = :sprintId", nativeQuery = true)
+    int clearEmbedding(@Param("sprintId") UUID sprintId);
+
     @Query(value = "SELECT * FROM sprints WHERE embedding IS NULL AND deleted_at IS NULL "
             + "ORDER BY created_at ASC LIMIT :limit", nativeQuery = true)
     List<Sprint> findSprintsWithoutEmbedding(@Param("limit") int limit);

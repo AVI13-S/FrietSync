@@ -42,13 +42,15 @@ public class IssueEmbeddingService {
             vector = embeddingModel.embed(text.toString());
         } catch (RuntimeException ex) {
             LOG.warn("Embedding issue {} failed: {}", issue.getId(), ex.getMessage());
+            if (!onlyIfMissing) {
+                issueRepository.clearEmbedding(issue.getId());
+            }
             return;
         }
-        String embedding = formatVector(vector);
         if (onlyIfMissing) {
-            issueRepository.updateEmbeddingIfMissing(issue.getId(), embedding);
+            issueRepository.updateEmbeddingIfMissing(issue.getId(), formatVector(vector));
         } else {
-            issueRepository.updateEmbedding(issue.getId(), embedding);
+            issueRepository.updateEmbedding(issue.getId(), formatVector(vector));
         }
     }
 
