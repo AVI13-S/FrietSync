@@ -6,6 +6,9 @@ import com.frietsync.backend.dto.replay.ReplaySnapshotResponse;
 import com.frietsync.backend.dto.replay.ReplayTimelineResponse;
 import com.frietsync.backend.dto.replay.UpdateReplayPhaseRequest;
 import com.frietsync.backend.entity.issue.Issue;
+import com.frietsync.backend.entity.issue.IssueHistory;
+import com.frietsync.backend.entity.issue.IssueHistoryAction;
+import com.frietsync.backend.entity.issue.IssuePriority;
 import com.frietsync.backend.entity.issue.IssueStatus;
 import com.frietsync.backend.entity.project.Project;
 import com.frietsync.backend.entity.project.ProjectStatus;
@@ -16,6 +19,7 @@ import com.frietsync.backend.entity.user.Role;
 import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.repository.issue.IssueRepository;
+import com.frietsync.backend.repository.issue.IssueHistoryRepository;
 import com.frietsync.backend.repository.replay.ProjectReplayPhaseRepository;
 import com.frietsync.backend.repository.sprint.SprintRepository;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
@@ -24,6 +28,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -41,6 +46,7 @@ public class ReplayServiceImpl implements ReplayService {
 
     private final ProjectAccess projectAccess;
     private final IssueRepository issueRepository;
+    private final IssueHistoryRepository issueHistoryRepository;
     private final SprintRepository sprintRepository;
     private final ProjectReplayPhaseRepository phaseRepository;
     private static class Facts {
@@ -49,15 +55,127 @@ public class ReplayServiceImpl implements ReplayService {
         private final Map<ReplayPhaseType, String> causes = new HashMap<>();
     }
 
+    private static class SnapshotIssue {
+        private final Issue issue;
+        private String title;
+        private IssueStatus status;
+        private IssuePriority priority;
+        private LocalDate startDate;
+        private LocalDate dueDate;
+        private boolean deleted;
+        private Instant resolvedAt;
+        private Instant closedAt;
+
+        SnapshotIssue(Issue issue) {
+            this.issue = issue;
+            this.title = issue.getTitle();
+            this.status = issue.getStatus();
+            this.priority = issue.getPriority();
+            this.startDate = issue.getStartDate();
+            this.dueDate = issue.getDueDate();
+            this.deleted = issue.getDeletedAt() != null;
+            this.resolvedAt = issue.getResolvedAt();
+            this.closedAt = issue.getClosedAt();
+        }
+
+        void revert(IssueHistory history) {
+            if (history.getAction() == IssueHistoryAction.DELETED) {
+                deleted = false;
+            } else if (history.getAction() == IssueHistoryAction.RESTORED) {
+                deleted = true;
+            }
+            String oldValue = history.getOldValue();
+            if ("status".equals(history.getFieldName())) {
+                if (history.getAction() == IssueHistoryAction.UPDATED
+                        || history.getAction() == IssueHistoryAction.RESOLVED
+                        || history.getAction() == IssueHistoryAction.REVIEW_APPROVED
+                        || history.getAction() == IssueHistoryAction.REVIEW_REJECTED) {
+                    status = oldValue == null ? null : IssueStatus.valueOf(oldValue);
+                }
+                return;
+            }
+            if (history.getAction() != IssueHistoryAction.UPDATED) {
+                return;
+            }
+            if ("title".equals(history.getFieldName())) {
+                title = oldValue;
+            } else if ("priority".equals(history.getFieldName())) {
+                priority = oldValue == null ? null : IssuePriority.valueOf(oldValue);
+            } else if ("startDate".equals(history.getFieldName())) {
+                startDate = oldValue == null ? null : LocalDate.parse(oldValue);
+            } else if ("dueDate".equals(history.getFieldName())) {
+                dueDate = oldValue == null ? null : LocalDate.parse(oldValue);
+            }
+        }
+
+        void reconstructFinishTimes(List<IssueHistory> history, Instant moment) {
+            Instant historicalResolvedAt = null;
+            Instant historicalClosedAt = null;
+            boolean foundStatusChange = false;
+            for (int i = history.size() - 1; i >= 0; i--) {
+                IssueHistory entry = history.get(i);
+                if (entry.getCreatedAt().isAfter(moment) || !"status".equals(entry.getFieldName())
+                        || (entry.getAction() != IssueHistoryAction.UPDATED
+                        && entry.getAction() != IssueHistoryAction.RESOLVED
+                        && entry.getAction() != IssueHistoryAction.REVIEW_APPROVED
+                        && entry.getAction() != IssueHistoryAction.REVIEW_REJECTED)) {
+                    continue;
+                }
+                foundStatusChange = true;
+                IssueStatus next = IssueStatus.valueOf(entry.getNewValue());
+                if (next == IssueStatus.RESOLVED) {
+                    historicalResolvedAt = entry.getCreatedAt();
+                    historicalClosedAt = null;
+                } else if (next == IssueStatus.CLOSED) {
+                    if (historicalResolvedAt == null) {
+                        historicalResolvedAt = entry.getCreatedAt();
+                    }
+                    historicalClosedAt = entry.getCreatedAt();
+                } else {
+                    historicalResolvedAt = null;
+                    historicalClosedAt = null;
+                }
+            }
+            if (foundStatusChange) {
+                resolvedAt = historicalResolvedAt;
+                closedAt = historicalClosedAt;
+            } else {
+                if (resolvedAt != null && resolvedAt.isAfter(moment)) {
+                    resolvedAt = null;
+                }
+                if (closedAt != null && closedAt.isAfter(moment)) {
+                    closedAt = null;
+                }
+            }
+        }
+
+        Issue asIssue() {
+            Issue snapshot = new Issue();
+            snapshot.setId(issue.getId());
+            snapshot.setProjectId(issue.getProjectId());
+            snapshot.setIssueNumber(issue.getIssueNumber());
+            snapshot.setTitle(title);
+            snapshot.setStatus(status);
+            snapshot.setPriority(priority);
+            snapshot.setStartDate(startDate);
+            snapshot.setDueDate(dueDate);
+            snapshot.setCreatedAt(issue.getCreatedAt());
+            snapshot.setResolvedAt(resolvedAt);
+            snapshot.setClosedAt(closedAt);
+            snapshot.setDeletedAt(deleted ? issue.getDeletedAt() : null);
+            return snapshot;
+        }
+    }
+
     @Override
-    @Transactional
+    @Transactional(readOnly = true)
     public ReplayTimelineResponse timeline(UUID projectId, UUID userId) {
         Project project = projectAccess.project(projectId);
         projectAccess.requireMember(project, userId);
 
         Instant now = Instant.now();
         List<Issue> issues = issueRepository.findByProjectIdAndDeletedAtIsNull(projectId);
-        List<Sprint> sprints = sprintRepository.findByProjectId(projectId);
+        List<Sprint> sprints = sprintRepository.findByProjectIdAndDeletedAtIsNull(projectId);
         Facts facts = collectFacts(project, issues, sprints, now);
         List<ProjectReplayPhase> phases = loadPhases(project, facts.dates);
         Map<ReplayPhaseType, Instant> ends = phaseEnds(phases, now);
@@ -95,11 +213,29 @@ public class ReplayServiceImpl implements ReplayService {
         Project project = projectAccess.project(projectId);
         projectAccess.require(project, userId, Role.PROJECT_MANAGER);
 
-        ProjectReplayPhase phase = phaseRepository.findByIdAndProjectId(phaseId, projectId)
+        Instant now = Instant.now();
+        List<Issue> issues = issueRepository.findByProjectIdAndDeletedAtIsNull(projectId);
+        List<Sprint> sprints = sprintRepository.findByProjectIdAndDeletedAtIsNull(projectId);
+        Facts facts = collectFacts(project, issues, sprints, now);
+        List<ProjectReplayPhase> phases = loadPhases(project, facts.dates);
+        ProjectReplayPhase phase = phases.stream()
+                .filter(current -> current.getId().equals(phaseId))
+                .findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException("Phase not found"));
 
-        if (request.getTitle() == null && request.getDescription() == null && request.getPhaseDate() == null) {
+        if (request.getTitle() == null && request.getDescription() == null && request.getPhaseDate() == null
+                && !request.isResetPhaseDate()) {
             throw new BadRequestException("Nothing to update");
+        }
+        if (request.isResetPhaseDate() && request.getPhaseDate() != null) {
+            throw new BadRequestException("Provide either phaseDate or resetPhaseDate, not both");
+        }
+        Instant requestedDate = request.getPhaseDate();
+        if (request.isResetPhaseDate()) {
+            requestedDate = facts.dates.get(phase.getPhaseType());
+        }
+        if (requestedDate != null) {
+            validatePhaseDate(project, phase, requestedDate, phases);
         }
         if (request.getTitle() != null) {
             if (request.getTitle().isBlank()) {
@@ -113,17 +249,20 @@ public class ReplayServiceImpl implements ReplayService {
         if (request.getPhaseDate() != null) {
             phase.setPhaseDate(request.getPhaseDate());
             phase.setDateOverridden(true);
+        } else if (request.isResetPhaseDate()) {
+            phase.setPhaseDate(facts.dates.get(phase.getPhaseType()));
+            phase.setDateOverridden(false);
+        }
+        boolean virtual = phaseRepository.findByIdAndProjectId(phaseId, projectId).isEmpty();
+        if (virtual) {
+            phase.setId(null);
         }
         phaseRepository.save(phase);
 
-        Instant now = Instant.now();
-        List<Issue> issues = issueRepository.findByProjectIdAndDeletedAtIsNull(projectId);
-        List<Sprint> sprints = sprintRepository.findByProjectId(projectId);
-        Facts facts = collectFacts(project, issues, sprints, now);
-        List<ProjectReplayPhase> phases = loadPhases(project, facts.dates);
-        Map<ReplayPhaseType, Instant> ends = phaseEnds(phases, now);
+        List<ProjectReplayPhase> savedPhases = loadPhases(project, facts.dates);
+        Map<ReplayPhaseType, Instant> ends = phaseEnds(savedPhases, now);
 
-        for (ProjectReplayPhase current : phases) {
+        for (ProjectReplayPhase current : savedPhases) {
             if (current.getId().equals(phase.getId())) {
                 return toResponse(current, facts, ends, now);
             }
@@ -131,25 +270,85 @@ public class ReplayServiceImpl implements ReplayService {
         return toResponse(phase, facts, ends, now);
     }
 
+    private void validatePhaseDate(Project project, ProjectReplayPhase phase, Instant date,
+                                   List<ProjectReplayPhase> phases) {
+        if (date.isBefore(project.getCreatedAt())) {
+            throw new BadRequestException("Phase date cannot be before the project was created");
+        }
+        if (phase.getPhaseType() == ReplayPhaseType.CREATED && !date.equals(project.getCreatedAt())) {
+            throw new BadRequestException("The created phase date must match the project creation time");
+        }
+
+        LocalDate phaseDay = date.atZone(ZoneOffset.UTC).toLocalDate();
+        Instant completedDate = phase.getPhaseType() == ReplayPhaseType.COMPLETED
+                ? date
+                : phases.stream()
+                .filter(current -> current.getPhaseType() == ReplayPhaseType.COMPLETED)
+                .filter(current -> current.getPhaseDate() != null)
+                .map(ProjectReplayPhase::getPhaseDate)
+                .findFirst()
+                .orElse(null);
+        if (completedDate != null) {
+            LocalDate completedDay = completedDate.atZone(ZoneOffset.UTC).toLocalDate();
+            if (phase.getPhaseType() != ReplayPhaseType.COMPLETED && phaseDay.isAfter(completedDay)) {
+                throw new BadRequestException("A phase cannot occur after project completion");
+            }
+            if (phase.getPhaseType() == ReplayPhaseType.COMPLETED) {
+                for (ProjectReplayPhase other : phases) {
+                    if (other.getPhaseType() != ReplayPhaseType.COMPLETED && other.getPhaseDate() != null
+                            && phaseDay.isBefore(other.getPhaseDate().atZone(ZoneOffset.UTC).toLocalDate())) {
+                        throw new BadRequestException("The completion phase cannot precede another project phase");
+                    }
+                }
+            }
+        }
+
+        if (phase.getPhaseType() == ReplayPhaseType.RESOLVED) {
+            validatePhaseOrder(phaseDay, ReplayPhaseType.ISSUES, phases,
+                    "The resolved phase cannot precede the issues phase");
+        } else if (phase.getPhaseType() == ReplayPhaseType.ISSUES) {
+            validatePhaseOrder(phaseDay, ReplayPhaseType.RESOLVED, phases,
+                    "The issues phase cannot follow the resolved phase");
+        }
+    }
+
+    private void validatePhaseOrder(LocalDate phaseDay, ReplayPhaseType otherType,
+                                    List<ProjectReplayPhase> phases, String message) {
+        Instant otherDate = phases.stream()
+                .filter(phase -> phase.getPhaseType() == otherType)
+                .filter(phase -> phase.getPhaseDate() != null)
+                .map(ProjectReplayPhase::getPhaseDate)
+                .findFirst()
+                .orElse(null);
+        if (otherDate == null) {
+            return;
+        }
+        LocalDate otherDay = otherDate.atZone(ZoneOffset.UTC).toLocalDate();
+        if ((otherType == ReplayPhaseType.ISSUES && phaseDay.isBefore(otherDay))
+                || (otherType == ReplayPhaseType.RESOLVED && phaseDay.isAfter(otherDay))) {
+            throw new BadRequestException(message);
+        }
+    }
+
     @Override
-    @Transactional
+    @Transactional(readOnly = true)
     public ReplaySnapshotResponse snapshot(UUID projectId, Instant at, UUID userId) {
         Project project = projectAccess.project(projectId);
         projectAccess.requireMember(project, userId);
 
         Instant now = Instant.now();
-        boolean isNow = at == null || !at.isBefore(now);
-        Instant moment = now;
-        if (!isNow) {
-            moment = at;
-        }
+        Instant moment = at == null || !at.isBefore(now) ? now : at;
         if (moment.isBefore(project.getCreatedAt())) {
             throw new BadRequestException("Time is before the project was created");
         }
         LocalDate day = moment.atZone(ZoneOffset.UTC).toLocalDate();
 
-        List<Issue> issues = issueRepository.findByProjectIdAndDeletedAtIsNull(projectId);
-        List<Sprint> sprints = sprintRepository.findByProjectId(projectId);
+        List<SnapshotIssue> snapshotIssues = snapshotIssues(projectId, moment);
+        List<Issue> issues = snapshotIssues.stream().map(SnapshotIssue::asIssue).toList();
+        List<Sprint> sprints = sprintRepository.findByProjectId(projectId).stream()
+                .filter(sprint -> !sprint.getCreatedAt().isAfter(moment))
+                .filter(sprint -> sprint.getDeletedAt() == null || sprint.getDeletedAt().isAfter(moment))
+                .toList();
         Facts facts = collectFacts(project, issues, sprints, now);
         List<ProjectReplayPhase> phases = loadPhases(project, facts.dates);
 
@@ -169,10 +368,7 @@ public class ReplayServiceImpl implements ReplayService {
         int overdue = 0;
         List<IssueSummaryResponse> visible = new ArrayList<>();
         for (Issue issue : issues) {
-            if (issue.getCreatedAt().isAfter(moment)) {
-                continue;
-            }
-            IssueStatus bucket = statusAt(issue, moment, isNow);
+            IssueStatus bucket = issue.getStatus();
             if (bucket == IssueStatus.CLOSED) {
                 closed++;
             } else if (bucket == IssueStatus.RESOLVED) {
@@ -184,27 +380,18 @@ public class ReplayServiceImpl implements ReplayService {
                 }
             }
 
-            IssueStatus shown = bucket;
-            if (isNow) {
-                shown = issue.getStatus();
-            }
             visible.add(IssueSummaryResponse.builder()
                     .id(issue.getId())
                     .issueNumber(issue.getIssueNumber())
                     .title(issue.getTitle())
-                    .status(shown)
+                    .status(issue.getStatus())
                     .priority(issue.getPriority())
                     .startDate(issue.getStartDate())
                     .dueDate(issue.getDueDate())
                     .build());
         }
 
-        int sprintCount = 0;
-        for (Sprint sprint : sprints) {
-            if (!sprint.getCreatedAt().isAfter(moment)) {
-                sprintCount++;
-            }
-        }
+        int sprintCount = sprints.size();
 
         double progress = 0;
         if (!visible.isEmpty()) {
@@ -224,25 +411,6 @@ public class ReplayServiceImpl implements ReplayService {
                 .totalSprints(sprintCount)
                 .issues(visible)
                 .build();
-    }
-
-    private IssueStatus statusAt(Issue issue, Instant moment, boolean isNow) {
-        if (isNow) {
-            if (issue.getStatus() == IssueStatus.CLOSED) {
-                return IssueStatus.CLOSED;
-            }
-            if (issue.getStatus() == IssueStatus.RESOLVED) {
-                return IssueStatus.RESOLVED;
-            }
-            return IssueStatus.OPEN;
-        }
-        if (issue.getClosedAt() != null && !issue.getClosedAt().isAfter(moment)) {
-            return IssueStatus.CLOSED;
-        }
-        if (issue.getResolvedAt() != null && !issue.getResolvedAt().isAfter(moment)) {
-            return IssueStatus.RESOLVED;
-        }
-        return IssueStatus.OPEN;
     }
 
     private Facts collectFacts(Project project, List<Issue> issues, List<Sprint> sprints, Instant now) {
@@ -420,19 +588,57 @@ public class ReplayServiceImpl implements ReplayService {
             ProjectReplayPhase phase = existing.get(type);
             if (phase == null) {
                 phase = new ProjectReplayPhase();
+                phase.setId(virtualPhaseId(project.getId(), type));
                 phase.setProjectId(project.getId());
                 phase.setPhaseType(type);
                 phase.setTitle(defaultTitle(type));
                 phase.setDescription(defaultDescription(type));
                 phase.setPhaseDate(calculated);
-                phase = phaseRepository.save(phase);
-            } else if (!phase.isDateOverridden() && !sameDate(phase.getPhaseDate(), calculated)) {
+            } else if (!phase.isDateOverridden()) {
                 phase.setPhaseDate(calculated);
-                phase = phaseRepository.save(phase);
             }
             result.add(phase);
         }
         return result;
+    }
+
+    private List<SnapshotIssue> snapshotIssues(UUID projectId, Instant moment) {
+        List<Issue> projectIssues = issueRepository.findByProjectId(projectId);
+        if (projectIssues.isEmpty()) {
+            return List.of();
+        }
+
+        Map<UUID, SnapshotIssue> states = new HashMap<>();
+        for (Issue issue : projectIssues) {
+            states.put(issue.getId(), new SnapshotIssue(issue));
+        }
+        List<IssueHistory> history = issueHistoryRepository.findByIssueIdInOrderByCreatedAtDescIdDesc(
+                states.keySet());
+        Map<UUID, List<IssueHistory>> historyByIssue = new HashMap<>();
+        for (IssueHistory entry : history) {
+            historyByIssue.computeIfAbsent(entry.getIssueId(), ignored -> new ArrayList<>()).add(entry);
+            if (entry.getCreatedAt().isAfter(moment)) {
+                SnapshotIssue state = states.get(entry.getIssueId());
+                if (state != null) {
+                    state.revert(entry);
+                }
+            }
+        }
+        List<SnapshotIssue> visible = new ArrayList<>();
+        for (SnapshotIssue state : states.values()) {
+            if (!state.deleted && !state.issue.getCreatedAt().isAfter(moment)) {
+                state.reconstructFinishTimes(historyByIssue.getOrDefault(state.issue.getId(), List.of()), moment);
+                visible.add(state);
+            }
+        }
+        visible.sort((first, second) ->
+                Integer.compare(first.issue.getIssueNumber(), second.issue.getIssueNumber()));
+        return visible;
+    }
+
+    private UUID virtualPhaseId(UUID projectId, ReplayPhaseType type) {
+        return UUID.nameUUIDFromBytes((projectId + ":replay:" + type.name())
+                .getBytes(StandardCharsets.UTF_8));
     }
 
     private ReplayPhaseResponse toResponse(ProjectReplayPhase phase, Facts facts,
@@ -486,13 +692,6 @@ public class ReplayServiceImpl implements ReplayService {
 
     private Instant startOfDay(LocalDate date) {
         return date.atStartOfDay(ZoneOffset.UTC).toInstant();
-    }
-
-    private boolean sameDate(Instant first, Instant second) {
-        if (first == null || second == null) {
-            return first == null && second == null;
-        }
-        return first.equals(second);
     }
 
     private double round(double value) {

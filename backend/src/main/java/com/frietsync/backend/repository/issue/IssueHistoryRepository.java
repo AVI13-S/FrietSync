@@ -16,6 +16,8 @@ public interface IssueHistoryRepository extends JpaRepository<IssueHistory, UUID
 
     Page<IssueHistory> findByIssueIdOrderByCreatedAtDescIdDesc(UUID issueId, Pageable pageable);
 
+    List<IssueHistory> findByIssueIdInOrderByCreatedAtDescIdDesc(Collection<UUID> issueIds);
+
     void deleteByIssueId(UUID issueId);
 
     @Query("select h from IssueHistory h where h.issueId in "

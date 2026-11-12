@@ -15,4 +15,6 @@ public class UpdateReplayPhaseRequest {
     private String description;
 
     private Instant phaseDate;
+
+    private boolean resetPhaseDate;
 }

@@ -58,7 +58,7 @@ public class ReplayController {
         }
         try {
             if (at.length() == 10) {
-                return LocalDate.parse(at).plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().minusSeconds(1);
+                return LocalDate.parse(at).plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().minusNanos(1);
             }
             return Instant.parse(at);
         } catch (DateTimeParseException ex) {
