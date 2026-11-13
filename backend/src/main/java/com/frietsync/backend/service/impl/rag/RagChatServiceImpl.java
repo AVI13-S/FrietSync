@@ -15,6 +15,7 @@ import com.frietsync.backend.repository.sprint.SprintRepository;
 import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
 import com.frietsync.backend.service.rag.RagChatService;
+import com.frietsync.backend.service.impl.ratelimit.RateLimitService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -25,7 +26,6 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,7 +40,6 @@ public class RagChatServiceImpl implements RagChatService {
     private static final int MAX_CHUNKS = 8;
     private static final int MAX_QUESTION_LENGTH = 1000;
     private static final int MAX_QUESTIONS_PER_MINUTE = 10;
-    private static final long ONE_MINUTE_MS = 60000;
     private static final long HISTORY_WINDOW_SECONDS = 3600;
     private static final int HISTORY_ANSWER_LENGTH = 800;
     private static final int STREAM_TIMEOUT_SECONDS = 120;
@@ -66,11 +65,10 @@ public class RagChatServiceImpl implements RagChatService {
     private final RagChatMessageRepository historyRepository;
     private final EmbeddingModel embeddingModel;
     private final ChatClient chatClient;
+    private final RateLimitService rateLimitService;
 
     @Value("${app.ai.rag-min-similarity:0.3}")
     private double minSimilarity;
-
-    private final Map<UUID, List<Long>> recentQuestions = new HashMap<>();
 
     public RagChatServiceImpl(ProjectAccess access,
                               ProjectDocumentChunkRepository chunkRepository,
@@ -79,7 +77,8 @@ public class RagChatServiceImpl implements RagChatService {
                               UserRepository userRepository,
                               RagChatMessageRepository historyRepository,
                               EmbeddingModel embeddingModel,
-                              ChatClient.Builder chatClientBuilder) {
+                              ChatClient.Builder chatClientBuilder,
+                              RateLimitService rateLimitService) {
         this.access = access;
         this.chunkRepository = chunkRepository;
         this.issueRepository = issueRepository;
@@ -88,6 +87,7 @@ public class RagChatServiceImpl implements RagChatService {
         this.historyRepository = historyRepository;
         this.embeddingModel = embeddingModel;
         this.chatClient = chatClientBuilder.build();
+        this.rateLimitService = rateLimitService;
     }
 
     @Override
@@ -135,7 +135,9 @@ public class RagChatServiceImpl implements RagChatService {
             throw new BadRequestException("Question is too long (max " + MAX_QUESTION_LENGTH + " characters)");
         }
 
-        checkRateLimit(userId);
+        if (!rateLimitService.isAllowed("rag-chat:" + userId, MAX_QUESTIONS_PER_MINUTE, Duration.ofMinutes(1))) {
+            throw new BadRequestException("You are asking too many questions. Please wait a minute and try again.");
+        }
 
         List<DocumentChunkSearchResult> chunks = findRelevantChunks(projectId, question);
         List<RagChatMessage> history = loadHistory(projectId, userId);
@@ -168,25 +170,6 @@ public class RagChatServiceImpl implements RagChatService {
             response.getSources().add(toolSource);
         }
         return response;
-    }
-
-    private synchronized void checkRateLimit(UUID userId) {
-        long now = System.currentTimeMillis();
-        List<Long> times = new ArrayList<>();
-        List<Long> oldTimes = recentQuestions.get(userId);
-        if (oldTimes != null) {
-            for (Long time : oldTimes) {
-                if (now - time < ONE_MINUTE_MS) {
-                    times.add(time);
-                }
-            }
-        }
-        if (times.size() >= MAX_QUESTIONS_PER_MINUTE) {
-            recentQuestions.put(userId, times);
-            throw new BadRequestException("You are asking too many questions. Please wait a minute and try again.");
-        }
-        times.add(now);
-        recentQuestions.put(userId, times);
     }
 
     private List<DocumentChunkSearchResult> findRelevantChunks(UUID projectId, String question) {

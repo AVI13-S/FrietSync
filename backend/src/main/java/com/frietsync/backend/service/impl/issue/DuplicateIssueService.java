@@ -6,6 +6,7 @@ import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.repository.issue.IssueRepository;
 import com.frietsync.backend.repository.issue.SemanticIssueSearchResult;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
+import com.frietsync.backend.service.impl.ratelimit.RateLimitService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,10 +14,9 @@ import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -27,16 +27,15 @@ public class DuplicateIssueService {
     private static final int MAX_RESULTS = 5;
     private static final int MAX_DESCRIPTION_LENGTH = 2000;
     private static final int MAX_CHECKS_PER_MINUTE = 30;
-    private static final long ONE_MINUTE_MS = 60000;
 
     private final ProjectAccess access;
     private final EmbeddingModel embeddingModel;
     private final IssueRepository issueRepository;
+    private final RateLimitService rateLimitService;
 
     @Value("${app.ai.duplicate-min-similarity:0.7}")
     private double minSimilarity;
 
-    private final Map<UUID, List<Long>> recentChecks = new HashMap<>();
 
     public List<SimilarIssueResponse> findSimilarIssues(UUID projectId, String title, String description,
                                                         UUID userId) {
@@ -46,7 +45,10 @@ public class DuplicateIssueService {
         if (title == null || title.isBlank()) {
             throw new BadRequestException("Title is required");
         }
-        checkRateLimit(userId);
+        if (!rateLimitService.isAllowed("duplicate-check:" + userId, MAX_CHECKS_PER_MINUTE, Duration.ofMinutes(1))) {
+            throw new BadRequestException("Too many duplicate checks. Please wait a minute and try again.");
+        }
+
 
         StringBuilder text = new StringBuilder("Title: ").append(title.trim());
         if (description != null && !description.isBlank()) {
@@ -77,25 +79,6 @@ public class DuplicateIssueService {
             }
         }
         return similarIssues;
-    }
-
-    private synchronized void checkRateLimit(UUID userId) {
-        long now = System.currentTimeMillis();
-        List<Long> times = new ArrayList<>();
-        List<Long> oldTimes = recentChecks.get(userId);
-        if (oldTimes != null) {
-            for (Long time : oldTimes) {
-                if (now - time < ONE_MINUTE_MS) {
-                    times.add(time);
-                }
-            }
-        }
-        if (times.size() >= MAX_CHECKS_PER_MINUTE) {
-            recentChecks.put(userId, times);
-            throw new BadRequestException("Too many duplicate checks. Please wait a minute and try again.");
-        }
-        times.add(now);
-        recentChecks.put(userId, times);
     }
 
     private String formatVector(float[] vector) {

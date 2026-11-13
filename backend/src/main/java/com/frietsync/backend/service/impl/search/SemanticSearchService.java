@@ -11,6 +11,7 @@ import com.frietsync.backend.repository.issue.IssueRepository;
 import com.frietsync.backend.repository.issue.SemanticIssueSearchResult;
 import com.frietsync.backend.repository.sprint.SprintRepository;
 import com.frietsync.backend.repository.sprint.SprintSemanticSearchResult;
+import com.frietsync.backend.service.impl.ratelimit.RateLimitService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +20,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -33,6 +35,7 @@ public class SemanticSearchService {
     private static final Logger LOG = LoggerFactory.getLogger(SemanticSearchService.class);
     private static final int MAX_QUERY_LENGTH = 1000;
     private static final int MAX_RESULTS = 20;
+    private static final int MAX_SEARCHES_PER_MINUTE = 30;
 
     private static final String TYPE_ISSUE = "ISSUE";
     private static final String TYPE_SPRINT = "SPRINT";
@@ -44,6 +47,7 @@ public class SemanticSearchService {
     private final SprintRepository sprintRepository;
     private final ProjectDocumentChunkRepository documentChunkRepository;
     private final ChatMessageRepository chatMessageRepository;
+    private final RateLimitService rateLimitService;
 
     @Value("${app.ai.search-min-similarity:0.3}")
     private double minSimilarity;
@@ -62,6 +66,10 @@ public class SemanticSearchService {
         String normalizedQuery = query.trim();
         if (normalizedQuery.length() > MAX_QUERY_LENGTH) {
             throw new BadRequestException("Search query is too long (max " + MAX_QUERY_LENGTH + " characters)");
+        }
+
+        if (!rateLimitService.isAllowed("search:" + userId, MAX_SEARCHES_PER_MINUTE, Duration.ofMinutes(1))) {
+            throw new BadRequestException("Too many searches. Please wait a minute and try again.");
         }
 
         String typeFilter = normalize(type);
