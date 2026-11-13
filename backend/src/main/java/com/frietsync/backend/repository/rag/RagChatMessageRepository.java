@@ -18,4 +18,8 @@ public interface RagChatMessageRepository extends JpaRepository<RagChatMessage, 
     @Modifying
     @Query("delete from RagChatMessage m where m.projectId = :projectId")
     void deleteByProjectId(@Param("projectId") UUID projectId);
+
+    @Modifying
+    @Query("delete from RagChatMessage m where m.createdAt < :cutoff")
+    int deleteOlderThan(@Param("cutoff") Instant cutoff);
 }
