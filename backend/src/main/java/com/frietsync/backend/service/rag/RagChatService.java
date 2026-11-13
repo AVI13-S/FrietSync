@@ -12,5 +12,5 @@ public interface RagChatService {
     RagChatResponse askRagChatbotStreaming(UUID projectId, String userQuestion, UUID userId,
                                            Consumer<String> chunkHandler);
 
-    void saveFeedback(UUID projectId, UUID messageId, String feedback, UUID userId);
+    void saveFeedback(UUID messageId, String feedback, UUID userId);
 }

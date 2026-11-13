@@ -11,6 +11,8 @@ public class RagChatRequest {
 
     private UUID requestId;
 
+    private UUID projectId; // Optional: target a specific project, or null for all accessible projects
+
     @NotBlank
     @Size(max = 1000)
     private String question;

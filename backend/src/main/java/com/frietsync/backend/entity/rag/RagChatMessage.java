@@ -14,11 +14,17 @@ import java.util.UUID;
 @EqualsAndHashCode(callSuper = false)
 @Entity
 @Table(name = "rag_chat_messages",
-        indexes = @Index(name = "idx_rag_chat_messages_project_user", columnList = "project_id, user_id"))
+        indexes = {
+                @Index(name = "idx_rag_chat_messages_project_user", columnList = "project_id, user_id"),
+                @Index(name = "idx_rag_chat_messages_user_created", columnList = "user_id")
+        })
 public class RagChatMessage extends BaseEntity {
 
-    @Column(name = "project_id", nullable = false, updatable = false)
+    @Column(name = "project_id", updatable = false)
     private UUID projectId;
+
+    @Column(name = "workspace_id", updatable = false)
+    private UUID workspaceId;
 
     @Column(name = "user_id", nullable = false, updatable = false)
     private UUID userId;

@@ -13,7 +13,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessagingException;
-import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageExceptionHandler;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -46,18 +45,17 @@ public class RagChatSocketController {
         this.ragChatExecutor = ragChatExecutor;
     }
 
-    @MessageMapping("/projects/{projectId}/rag-chat")
-    public void ask(@DestinationVariable UUID projectId,
-                    @Valid RagChatRequest request,
+    @MessageMapping("/ai-chat")
+    public void ask(@Valid RagChatRequest request,
                     Authentication authentication) {
         UUID userId = currentUserId(authentication);
         UUID requestId = request.getRequestId() != null ? request.getRequestId() : UUID.randomUUID();
         send(userId, new RagChatSocketEvent("started", requestId, null, null, null));
 
         try {
-            ragChatExecutor.execute(() -> processQuestion(projectId, request, userId, requestId));
+            ragChatExecutor.execute(() -> processQuestion(request, userId, requestId));
         } catch (RejectedExecutionException ex) {
-            LOG.warn("RAG chat executor is saturated for user {} in project {}", userId, projectId);
+            LOG.warn("RAG chat executor is saturated for user {}", userId);
             send(userId, new RagChatSocketEvent(
                     "error", requestId, null, "AI chat is busy. Please try again shortly.", null));
         }
@@ -79,15 +77,15 @@ public class RagChatSocketController {
         send(userId, new RagChatSocketEvent("error", requestId, null, error, null));
     }
 
-    private void processQuestion(UUID projectId, RagChatRequest request, UUID userId, UUID requestId) {
+    private void processQuestion(RagChatRequest request, UUID userId, UUID requestId) {
         try {
             Consumer<String> chunkHandler = piece ->
                     send(userId, new RagChatSocketEvent("chunk", requestId, null, null, piece));
             RagChatResponse response = ragChatService.askRagChatbotStreaming(
-                    projectId, request.getQuestion(), userId, chunkHandler);
+                    request.getProjectId(), request.getQuestion(), userId, chunkHandler);
             send(userId, new RagChatSocketEvent("completed", requestId, response, null, null));
         } catch (RuntimeException ex) {
-            LOG.error("WebSocket AI chat failed for user {} in project {}", userId, projectId, ex);
+            LOG.error("WebSocket AI chat failed for user {}", userId, ex);
             String message = ex instanceof BadRequestException
                     || ex instanceof AiServiceException
                     || ex instanceof ForbiddenException
@@ -98,7 +96,7 @@ public class RagChatSocketController {
     }
 
     private UUID requestIdFrom(Message<?> message) {
-        if (message.getPayload() instanceof RagChatRequest request) {
+        if (message != null && message.getPayload() instanceof RagChatRequest request) {
             return request.getRequestId();
         }
         return null;
@@ -107,6 +105,11 @@ public class RagChatSocketController {
     private UUID currentUserId(Authentication authentication) {
         if (authentication != null && authentication.getPrincipal() instanceof UUID userId) {
             return userId;
+        }
+        if (authentication != null && authentication.getPrincipal() instanceof String strId) {
+            try {
+                return UUID.fromString(strId);
+            } catch (Exception ignored) {}
         }
         throw new IllegalArgumentException("User not authenticated");
     }

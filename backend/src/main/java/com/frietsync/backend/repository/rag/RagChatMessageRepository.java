@@ -15,6 +15,9 @@ public interface RagChatMessageRepository extends JpaRepository<RagChatMessage, 
     List<RagChatMessage> findTop5ByProjectIdAndUserIdAndCreatedAtAfterOrderByCreatedAtDesc(
             UUID projectId, UUID userId, Instant since);
 
+    List<RagChatMessage> findTop5ByUserIdAndWorkspaceIdAndCreatedAtAfterOrderByCreatedAtDesc(
+            UUID userId, UUID workspaceId, Instant since);
+
     @Modifying
     @Query("delete from RagChatMessage m where m.projectId = :projectId")
     void deleteByProjectId(@Param("projectId") UUID projectId);

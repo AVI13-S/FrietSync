@@ -18,25 +18,23 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/projects/{projectId}/rag-chat")
+@RequestMapping("/api/v1/ai-chat")
 @RequiredArgsConstructor
 public class RagChatController {
 
     private final RagChatService ragChatService;
 
     @PostMapping("/ask")
-    public RagChatResponse ask(@PathVariable UUID projectId,
-                               @Valid @RequestBody RagChatRequest request,
+    public RagChatResponse ask(@Valid @RequestBody RagChatRequest request,
                                Authentication authentication) {
-        return ragChatService.askRagChatbot(projectId, request.getQuestion(), currentUserId(authentication));
+        return ragChatService.askRagChatbot(request.getProjectId(), request.getQuestion(), currentUserId(authentication));
     }
 
     @PutMapping("/messages/{messageId}/feedback")
-    public ResponseEntity<Void> feedback(@PathVariable UUID projectId,
-                                         @PathVariable UUID messageId,
+    public ResponseEntity<Void> feedback(@PathVariable UUID messageId,
                                          @Valid @RequestBody RagChatFeedbackRequest request,
                                          Authentication authentication) {
-        ragChatService.saveFeedback(projectId, messageId, request.getFeedback(), currentUserId(authentication));
+        ragChatService.saveFeedback(messageId, request.getFeedback(), currentUserId(authentication));
         return ResponseEntity.noContent().build();
     }
 
