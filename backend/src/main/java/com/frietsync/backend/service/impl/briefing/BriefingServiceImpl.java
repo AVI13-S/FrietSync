@@ -159,11 +159,6 @@ public class BriefingServiceImpl implements BriefingService {
             preference.setEmailEnabled(request.getEmailEnabled());
         }
 
-        ZonedDateTime now = ZonedDateTime.now(ZoneId.of(preference.getTimeZone()));
-        if (preference.isEmailEnabled() && !now.toLocalTime().isBefore(preference.getDeliveryTime())) {
-            preference.setLastSentOn(now.toLocalDate());
-        }
-
         preference = preferenceRepository.save(preference);
         return toResponse(preference);
     }

@@ -73,9 +73,6 @@ public class BriefingEmailScheduler {
 
         DailyBriefingResponse briefing = briefingService.today(preference.getUserId());
 
-        preference.setLastSentOn(today);
-        preferenceRepository.save(preference);
-
         SimpleMailMessage message = new SimpleMailMessage();
         if (fromAddress != null && !fromAddress.isBlank()) {
             message.setFrom(fromAddress);
@@ -84,6 +81,9 @@ public class BriefingEmailScheduler {
         message.setSubject("Your daily briefing for " + briefing.getDate());
         message.setText(emailBody(briefing));
         mailSender.send(message);
+
+        preference.setLastSentOn(today);
+        preferenceRepository.save(preference);
     }
 
     private String emailBody(DailyBriefingResponse briefing) {

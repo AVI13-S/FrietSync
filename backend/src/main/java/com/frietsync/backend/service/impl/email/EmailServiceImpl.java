@@ -5,15 +5,19 @@ import com.frietsync.backend.service.email.EmailService;
 import lombok.RequiredArgsConstructor;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
+import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.util.concurrent.TimeUnit;
+
 @Service
 @RequiredArgsConstructor
 public class EmailServiceImpl implements EmailService {
 
+    private static final int MAX_DELIVERY_ATTEMPTS = 3;
     private final JavaMailSender javaMailSender;
 
     @Override
@@ -48,7 +52,7 @@ public class EmailServiceImpl implements EmailService {
         details.setMsgBody("You have been invited to join FrietSync as a " + role + ".");
         details.setActionUrl(inviteUrl);
         details.setActionLabel("View your invite");
-        sendSimpleMail(details);
+        sendWithRetry(details);
     }
 
     @Override
@@ -62,7 +66,29 @@ public class EmailServiceImpl implements EmailService {
                 + "\nStarts: " + startAt + "\nEnds: " + endAt);
         details.setActionUrl(meetingLink);
         details.setActionLabel("Join Google Meet");
-        sendSimpleMail(details);
+        sendWithRetry(details);
+    }
+
+    private void sendWithRetry(EmailDetails details) {
+        MailException lastFailure = null;
+        for (int attempt = 1; attempt <= MAX_DELIVERY_ATTEMPTS; attempt++) {
+            try {
+                sendSimpleMail(details);
+                return;
+            } catch (MailException exception) {
+                lastFailure = exception;
+                if (attempt == MAX_DELIVERY_ATTEMPTS) {
+                    throw exception;
+                }
+                try {
+                    TimeUnit.MILLISECONDS.sleep(250L * attempt);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Email retry was interrupted", interrupted);
+                }
+            }
+        }
+        throw new IllegalStateException("Email delivery failed", lastFailure);
     }
 
     private String formatHtml(EmailDetails details) {
