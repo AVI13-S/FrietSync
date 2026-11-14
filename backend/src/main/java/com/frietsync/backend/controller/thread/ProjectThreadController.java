@@ -1,10 +1,10 @@
 package com.frietsync.backend.controller.thread;
 
+import com.frietsync.backend.dto.thread.CommentResponse;
 import com.frietsync.backend.dto.thread.CreateCommentRequest;
 import com.frietsync.backend.dto.thread.CreateThreadRequest;
 import com.frietsync.backend.dto.thread.ThreadDetailResponse;
-import com.frietsync.backend.entity.thread.ProjectThread;
-import com.frietsync.backend.entity.thread.ThreadComment;
+import com.frietsync.backend.dto.thread.ThreadSummaryResponse;
 import com.frietsync.backend.service.impl.thread.ProjectThreadService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -25,17 +25,17 @@ public class ProjectThreadController {
     private final ProjectThreadService threadService;
 
     @GetMapping
-    public Page<ProjectThread> getThreads(@PathVariable UUID projectId,
-                                          @PageableDefault(size = 20) Pageable pageable,
-                                          Authentication authentication) {
+    public Page<ThreadSummaryResponse> getThreads(@PathVariable UUID projectId,
+                                                  @PageableDefault(size = 20) Pageable pageable,
+                                                  Authentication authentication) {
         return threadService.getThreads(projectId, pageable, currentUserId(authentication));
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public ProjectThread createThread(@PathVariable UUID projectId,
-                                        @Valid @RequestBody CreateThreadRequest request,
-                                        Authentication authentication) {
+    public ThreadSummaryResponse createThread(@PathVariable UUID projectId,
+                                              @Valid @RequestBody CreateThreadRequest request,
+                                              Authentication authentication) {
         return threadService.createThread(projectId, request, currentUserId(authentication));
     }
 
@@ -56,17 +56,17 @@ public class ProjectThreadController {
 
     @PostMapping("/{threadId}/comments")
     @ResponseStatus(HttpStatus.CREATED)
-    public ThreadComment addComment(@PathVariable UUID projectId,
-                                    @PathVariable UUID threadId,
-                                    @Valid @RequestBody CreateCommentRequest request,
-                                    Authentication authentication) {
+    public CommentResponse addComment(@PathVariable UUID projectId,
+                                      @PathVariable UUID threadId,
+                                      @Valid @RequestBody CreateCommentRequest request,
+                                      Authentication authentication) {
         return threadService.addComment(projectId, threadId, request, currentUserId(authentication));
     }
 
     @PostMapping("/{threadId}/upvote")
-    public ProjectThread upvoteThread(@PathVariable UUID projectId,
-                                      @PathVariable UUID threadId,
-                                      Authentication authentication) {
+    public ThreadSummaryResponse upvoteThread(@PathVariable UUID projectId,
+                                              @PathVariable UUID threadId,
+                                              Authentication authentication) {
         return threadService.upvoteThread(projectId, threadId, currentUserId(authentication));
     }
 

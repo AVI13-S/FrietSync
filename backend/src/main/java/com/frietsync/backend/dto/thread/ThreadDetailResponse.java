@@ -15,6 +15,7 @@ public class ThreadDetailResponse {
     private String title;
     private String content;
     private int upvotes;
+    private boolean upvotedByMe;
     private Instant createdAt;
     private Instant updatedAt;
     private List<CommentResponse> comments;
