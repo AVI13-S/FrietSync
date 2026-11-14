@@ -5,6 +5,7 @@ import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
@@ -27,7 +28,7 @@ public class CanvasOutboundAuthorizationInterceptor implements ChannelIntercepto
     private static final String PROJECT_ID_HEADER = "canvasProjectId";
 
     private final ProjectAccess access;
-    private final SimpUserRegistry userRegistry;
+    private final ObjectProvider<SimpUserRegistry> userRegistry;
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
@@ -83,7 +84,7 @@ public class CanvasOutboundAuthorizationInterceptor implements ChannelIntercepto
         if (sessionId == null) {
             return null;
         }
-        for (SimpUser user : userRegistry.getUsers()) {
+        for (SimpUser user : userRegistry.getObject().getUsers()) {
             for (SimpSession session : user.getSessions()) {
                 if (sessionId.equals(session.getId())) {
                     try {
