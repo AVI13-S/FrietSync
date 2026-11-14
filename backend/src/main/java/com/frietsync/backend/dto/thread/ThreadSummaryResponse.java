@@ -1,0 +1,20 @@
+package com.frietsync.backend.dto.thread;
+
+import lombok.Data;
+
+import java.time.Instant;
+import java.util.UUID;
+
+@Data
+public class ThreadSummaryResponse {
+    private UUID id;
+    private UUID projectId;
+    private UUID authorId;
+    private String authorName;
+    private String title;
+    private String content;
+    private int upvotes;
+    private boolean upvotedByMe;
+    private Instant createdAt;
+    private Instant updatedAt;
+}
