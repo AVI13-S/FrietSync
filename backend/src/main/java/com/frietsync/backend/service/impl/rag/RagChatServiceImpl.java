@@ -12,10 +12,13 @@ import com.frietsync.backend.repository.document.DocumentChunkSearchResult;
 import com.frietsync.backend.repository.document.DocumentSemanticSearchResult;
 import com.frietsync.backend.repository.document.ProjectDocumentChunkRepository;
 import com.frietsync.backend.repository.issue.IssueRepository;
+import com.frietsync.backend.repository.project.MilestoneRepository;
+import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
 import com.frietsync.backend.repository.rag.RagChatMessageRepository;
 import com.frietsync.backend.repository.sprint.SprintRepository;
 import com.frietsync.backend.repository.user.UserRepository;
+import com.frietsync.backend.repository.workspace.WorkspaceRepository;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
 import com.frietsync.backend.service.rag.RagChatService;
 import org.slf4j.Logger;
@@ -54,7 +57,8 @@ public class RagChatServiceImpl implements RagChatService {
     private static final String SYSTEM_PROMPT =
             "You are the global assistant across all software projects in the workspace. "
                     + "Answer using the supplied document context and the available project tools. "
-                    + "Use tools when the user asks about issues, sprints, assignees, statuses, or project summaries. "
+                    + "Use tools when the user asks about issues, sprints, milestones, project members, workspace details, "
+                    + "assignees, statuses, or project summaries. "
                     + "Search issues by keyword first, and use the semantic search when the user describes a problem "
                     + "in their own words. Use the conversation so far to understand follow-up questions. "
                     + "Do not invent project facts. If the context and tools do not contain the answer, say so. "
@@ -65,8 +69,11 @@ public class RagChatServiceImpl implements RagChatService {
     private final ProjectRepository projectRepository;
     private final ProjectDocumentChunkRepository chunkRepository;
     private final IssueRepository issueRepository;
+    private final MilestoneRepository milestoneRepository;
+    private final ProjectMemberRepository projectMemberRepository;
     private final SprintRepository sprintRepository;
     private final UserRepository userRepository;
+    private final WorkspaceRepository workspaceRepository;
     private final RagChatMessageRepository historyRepository;
     private final EmbeddingModel embeddingModel;
     private final ChatClient chatClient;
@@ -80,8 +87,11 @@ public class RagChatServiceImpl implements RagChatService {
                               ProjectRepository projectRepository,
                               ProjectDocumentChunkRepository chunkRepository,
                               IssueRepository issueRepository,
+                              MilestoneRepository milestoneRepository,
+                              ProjectMemberRepository projectMemberRepository,
                               SprintRepository sprintRepository,
                               UserRepository userRepository,
+                              WorkspaceRepository workspaceRepository,
                               RagChatMessageRepository historyRepository,
                               EmbeddingModel embeddingModel,
                               ChatClient.Builder chatClientBuilder) {
@@ -89,8 +99,11 @@ public class RagChatServiceImpl implements RagChatService {
         this.projectRepository = projectRepository;
         this.chunkRepository = chunkRepository;
         this.issueRepository = issueRepository;
+        this.milestoneRepository = milestoneRepository;
+        this.projectMemberRepository = projectMemberRepository;
         this.sprintRepository = sprintRepository;
         this.userRepository = userRepository;
+        this.workspaceRepository = workspaceRepository;
         this.historyRepository = historyRepository;
         this.embeddingModel = embeddingModel;
         this.chatClient = chatClientBuilder.build();
@@ -149,7 +162,8 @@ public class RagChatServiceImpl implements RagChatService {
         List<DocumentSemanticSearchResult> chunks = findRelevantChunksForUser(userId, projectId, question);
         List<RagChatMessage> history = loadHistory(userId, workspaceId);
         RagChatTools tools = new RagChatTools(workspaceId, projectId, userId, projectRepository,
-                issueRepository, sprintRepository, userRepository, embeddingModel, minSimilarity);
+                issueRepository, milestoneRepository, projectMemberRepository, sprintRepository,
+                userRepository, workspaceRepository, embeddingModel, minSimilarity);
 
         String answer = askAi(workspaceId, question, chunks, history, tools, chunkHandler);
 

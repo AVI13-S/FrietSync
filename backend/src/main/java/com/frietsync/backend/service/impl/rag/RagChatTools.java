@@ -3,29 +3,41 @@ package com.frietsync.backend.service.impl.rag;
 import com.frietsync.backend.dto.rag.RagSourceResponse;
 import com.frietsync.backend.entity.issue.Issue;
 import com.frietsync.backend.entity.issue.IssueStatus;
+import com.frietsync.backend.entity.project.Milestone;
 import com.frietsync.backend.entity.project.Project;
+import com.frietsync.backend.entity.project.ProjectMember;
 import com.frietsync.backend.entity.sprint.Sprint;
+import com.frietsync.backend.entity.user.Role;
 import com.frietsync.backend.entity.user.User;
+import com.frietsync.backend.entity.workspace.Workspace;
 import com.frietsync.backend.repository.issue.IssueRepository;
 import com.frietsync.backend.repository.issue.SemanticIssueSearchResult;
+import com.frietsync.backend.repository.project.MilestoneRepository;
+import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
 import com.frietsync.backend.repository.sprint.SprintRepository;
 import com.frietsync.backend.repository.sprint.SprintSemanticSearchResult;
 import com.frietsync.backend.repository.user.UserRepository;
+import com.frietsync.backend.repository.workspace.WorkspaceRepository;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.data.domain.PageRequest;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 public class RagChatTools {
 
     private static final int MAX_ISSUES = 8;
     private static final int MAX_SPRINTS = 10;
+    private static final int MAX_MILESTONES = 25;
+    private static final int MAX_PROJECT_MEMBERS = 50;
+    private static final int MAX_WORKSPACE_MEMBERS = 50;
     private static final int MAX_TEXT_LENGTH = 300;
 
     private final UUID workspaceId;
@@ -33,8 +45,11 @@ public class RagChatTools {
     private final UUID userId;
     private final ProjectRepository projectRepository;
     private final IssueRepository issueRepository;
+    private final MilestoneRepository milestoneRepository;
+    private final ProjectMemberRepository projectMemberRepository;
     private final SprintRepository sprintRepository;
     private final UserRepository userRepository;
+    private final WorkspaceRepository workspaceRepository;
     private final EmbeddingModel embeddingModel;
     private final double minSimilarity;
 
@@ -43,15 +58,20 @@ public class RagChatTools {
 
     public RagChatTools(UUID workspaceId, UUID targetProjectId, UUID userId,
                         ProjectRepository projectRepository, IssueRepository issueRepository,
+                        MilestoneRepository milestoneRepository, ProjectMemberRepository projectMemberRepository,
                         SprintRepository sprintRepository, UserRepository userRepository,
+                        WorkspaceRepository workspaceRepository,
                         EmbeddingModel embeddingModel, double minSimilarity) {
         this.workspaceId = workspaceId;
         this.targetProjectId = targetProjectId;
         this.userId = userId;
         this.projectRepository = projectRepository;
         this.issueRepository = issueRepository;
+        this.milestoneRepository = milestoneRepository;
+        this.projectMemberRepository = projectMemberRepository;
         this.sprintRepository = sprintRepository;
         this.userRepository = userRepository;
+        this.workspaceRepository = workspaceRepository;
         this.embeddingModel = embeddingModel;
         this.minSimilarity = minSimilarity;
     }
@@ -283,6 +303,120 @@ public class RagChatTools {
             return "No projects found.";
         }
         return result.toString();
+    }
+
+    @Tool(description = "List upcoming and completed milestones for the current project, or across the user's "
+            + "authorized projects in the workspace.")
+    public String listMilestones() {
+        StringBuilder result = new StringBuilder();
+        int count = 0;
+        for (Project project : authorizedProjects()) {
+            for (Milestone milestone : milestoneRepository
+                    .findByProjectIdAndDeletedAtIsNullOrderByDueDateAsc(project.getId())) {
+                if (count >= MAX_MILESTONES) {
+                    break;
+                }
+                result.append("- [").append(project.getName()).append("] ")
+                        .append(milestone.getName()).append(" (id: ").append(milestone.getId()).append(")")
+                        .append(", due ").append(milestone.getDueDate())
+                        .append(", status ")
+                        .append(milestone.getCompletedAt() == null ? "INCOMPLETE" : "COMPLETED");
+                if (milestone.getCompletedAt() != null) {
+                    result.append(" at ").append(milestone.getCompletedAt());
+                }
+                if (milestone.getDescription() != null && !milestone.getDescription().isBlank()) {
+                    result.append(", description: ").append(shorten(milestone.getDescription()));
+                }
+                result.append('\n');
+                addSource("MILESTONE", milestone.getId(), project.getId(), project.getName(), milestone.getName());
+                count++;
+            }
+            if (count >= MAX_MILESTONES) {
+                break;
+            }
+        }
+        return count == 0 ? "No milestones were found in your projects." : result.toString();
+    }
+
+    @Tool(description = "List project administrators, managers, team leads, and members with their workspace "
+            + "identity and project role.")
+    public String listProjectMembers() {
+        StringBuilder result = new StringBuilder();
+        int count = 0;
+        for (Project project : authorizedProjects()) {
+            if (count >= MAX_PROJECT_MEMBERS) {
+                result.append("- List truncated to ").append(MAX_PROJECT_MEMBERS).append(" members.\n");
+                break;
+            }
+            Set<UUID> included = new LinkedHashSet<>();
+            count += appendProjectMember(result, project, project.getAdminId(), Role.ADMIN, included);
+            if (count < MAX_PROJECT_MEMBERS) {
+                count += appendProjectMember(result, project, project.getProjectManagerId(),
+                        Role.PROJECT_MANAGER, included);
+            }
+            if (count < MAX_PROJECT_MEMBERS) {
+                count += appendProjectMember(result, project, project.getTeamLeadId(), Role.TEAM_LEAD, included);
+            }
+            for (ProjectMember member : projectMemberRepository.findByProjectId(project.getId())) {
+                if (count >= MAX_PROJECT_MEMBERS) {
+                    result.append("- List truncated to ").append(MAX_PROJECT_MEMBERS).append(" members.\n");
+                    return result.toString();
+                }
+                count += appendProjectMember(result, project, member.getUserId(), member.getRole(), included);
+            }
+        }
+        return count == 0 ? "No project members were found in your projects." : result.toString();
+    }
+
+    @Tool(description = "Get the current workspace's name, creation date, administrator, and member roster.")
+    public String getWorkspaceDetails() {
+        Workspace workspace = workspaceRepository.findById(workspaceId).orElse(null);
+        if (workspace == null) {
+            return "Workspace details were not found.";
+        }
+
+        User admin = userRepository.findById(workspace.getAdminId()).orElse(null);
+        StringBuilder result = new StringBuilder()
+                .append("Workspace: ").append(workspace.getName())
+                .append("\nCreated: ").append(workspace.getCreatedOn())
+                .append("\nAdministrator: ")
+                .append(admin == null ? "unknown" : admin.getName() + " (" + admin.getEmail() + ")")
+                .append("\nMembers:\n");
+        List<User> members = userRepository.findAllByWorkspaceIdOrderByCreatedAtAsc(workspaceId);
+        int memberCount = Math.min(members.size(), MAX_WORKSPACE_MEMBERS);
+        for (int i = 0; i < memberCount; i++) {
+            User member = members.get(i);
+            result.append("- ").append(member.getName()).append(" (").append(member.getEmail())
+                    .append(", ").append(member.getRole()).append(")\n");
+        }
+        if (members.size() > MAX_WORKSPACE_MEMBERS) {
+            result.append("- List truncated to ").append(MAX_WORKSPACE_MEMBERS).append(" members.\n");
+        }
+        addSource("WORKSPACE", workspace.getId(), null, null, workspace.getName());
+        return result.toString();
+    }
+
+    private List<Project> authorizedProjects() {
+        return projectRepository.findAllForUser(userId).stream()
+                .filter(project -> workspaceId.equals(project.getWorkspaceId()))
+                .filter(project -> targetProjectId == null || targetProjectId.equals(project.getId()))
+                .toList();
+    }
+
+    private int appendProjectMember(StringBuilder result, Project project, UUID memberId, Role role,
+                                    Set<UUID> included) {
+        if (memberId == null || !included.add(memberId)) {
+            return 0;
+        }
+        User member = userRepository.findById(memberId).orElse(null);
+        if (member == null || !workspaceId.equals(member.getWorkspaceId())) {
+            return 0;
+        }
+        result.append("- [").append(project.getName()).append("] ")
+                .append(member.getName()).append(" (").append(member.getEmail())
+                .append(", ").append(role).append(")\n");
+        addSource("PROJECT_MEMBER", member.getId(), project.getId(), project.getName(), member.getName());
+        return 1;
     }
 
     private String formatIssues(List<Issue> issues) {
