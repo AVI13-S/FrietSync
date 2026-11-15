@@ -10,6 +10,8 @@ import jakarta.persistence.Table;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
+
 @Entity
 @Table(name = "github_connections")
 @Data
@@ -24,4 +26,13 @@ public class GitHubConnection extends BaseEntity {
 
     @Column(name = "encrypted_access_token", nullable = false, length = 4096)
     private String encryptedAccessToken;
+
+    @Column(name = "encrypted_refresh_token", length = 4096)
+    private String encryptedRefreshToken;
+
+    @Column(name = "access_token_expires_at")
+    private Instant accessTokenExpiresAt;
+
+    @Column(name = "refresh_token_expires_at")
+    private Instant refreshTokenExpiresAt;
 }

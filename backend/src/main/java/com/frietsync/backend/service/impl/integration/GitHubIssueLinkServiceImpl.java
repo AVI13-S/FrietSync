@@ -19,7 +19,7 @@ import com.frietsync.backend.repository.project.ProjectMemberRepository;
 import com.frietsync.backend.repository.project.ProjectRepository;
 import com.frietsync.backend.service.integration.GitHubApiClient;
 import com.frietsync.backend.service.integration.GitHubIssueLinkService;
-import com.frietsync.backend.service.integration.GitHubTokenCipher;
+import com.frietsync.backend.service.integration.GitHubTokenService;
 import com.frietsync.backend.service.impl.issue.IssueMapper;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
 import com.frietsync.backend.service.impl.project.MilestoneCompletionService;
@@ -43,7 +43,7 @@ public class GitHubIssueLinkServiceImpl implements GitHubIssueLinkService {
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository memberRepository;
     private final GitHubConnectionRepository connectionRepository;
-    private final GitHubTokenCipher cipher;
+    private final GitHubTokenService tokenService;
     private final GitHubApiClient githubApi;
     private final ProjectAccess projectAccess;
     private final IssueMapper issueMapper;
@@ -65,7 +65,7 @@ public class GitHubIssueLinkServiceImpl implements GitHubIssueLinkService {
                 .orElseThrow(() -> new BadRequestException("Connect GitHub before linking an issue"));
         String repository = linked.getRepositoryOwner() + "/" + linked.getRepositoryName();
         Map<String, Object> response = githubApi.getMap("/repos/" + repository + "/issues/" + githubIssueNumber,
-                cipher.decrypt(connection.getEncryptedAccessToken()));
+                tokenService.getValidAccessToken(userId));
         if (response == null || !(response.get("number") instanceof Number number)
                 || !(response.get("title") instanceof String title)
                 || !(response.get("html_url") instanceof String url)) {
@@ -97,7 +97,7 @@ public class GitHubIssueLinkServiceImpl implements GitHubIssueLinkService {
         body.put("body", issue.getDescription());
         String repository = linked.getRepositoryOwner() + "/" + linked.getRepositoryName();
         Map<String, Object> response = githubApi.postMap("/repos/" + repository + "/issues", body,
-                cipher.decrypt(connection.getEncryptedAccessToken()));
+                tokenService.getValidAccessToken(userId));
         if (response == null || !(response.get("number") instanceof Number number)
                 || !(response.get("title") instanceof String title)
                 || !(response.get("html_url") instanceof String url)) {
@@ -161,7 +161,7 @@ public class GitHubIssueLinkServiceImpl implements GitHubIssueLinkService {
         String state = issue.getStatus() == IssueStatus.CLOSED ? "closed"
                 : issue.getStatus() == IssueStatus.REOPENED ? "open" : null;
         if (state == null) return;
-        githubApi.patchMap(issuePath(issue), Map.of("state", state), cipher.decrypt(connection.getEncryptedAccessToken()));
+        githubApi.patchMap(issuePath(issue), Map.of("state", state), tokenService.getValidAccessToken(userId));
     }
 
     private void refresh(Issue issue, UUID preferredUserId) {
@@ -185,7 +185,8 @@ public class GitHubIssueLinkServiceImpl implements GitHubIssueLinkService {
         }
         if (connection == null) return;
         try {
-            Map<String, Object> response = githubApi.getMap(issuePath(issue), cipher.decrypt(connection.getEncryptedAccessToken()));
+            Map<String, Object> response = githubApi.getMap(
+                    issuePath(issue), tokenService.getValidAccessToken(connection.getUser().getId()));
             if (response == null || !(response.get("state") instanceof String state)) return;
             if ("closed".equalsIgnoreCase(state)) {
                 issue.setStatus(IssueStatus.CLOSED);

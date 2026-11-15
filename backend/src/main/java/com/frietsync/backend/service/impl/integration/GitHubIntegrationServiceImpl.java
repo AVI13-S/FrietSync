@@ -11,6 +11,7 @@ import com.frietsync.backend.entity.project.ProjectMember;
 import com.frietsync.backend.entity.user.User;
 import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.exception.ForbiddenException;
+import com.frietsync.backend.exception.GitHubReauthorizationRequiredException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
 import com.frietsync.backend.repository.integration.GitHubConnectionRepository;
 import com.frietsync.backend.repository.integration.GitHubOAuthStateRepository;
@@ -23,6 +24,7 @@ import com.frietsync.backend.service.integration.GitHubIntegrationService;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
 import com.frietsync.backend.service.integration.GitHubApiClient;
 import com.frietsync.backend.service.integration.GitHubTokenCipher;
+import com.frietsync.backend.service.integration.GitHubTokenService;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.springframework.http.HttpEntity;
@@ -31,6 +33,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
@@ -59,6 +62,7 @@ public class GitHubIntegrationServiceImpl implements GitHubIntegrationService {
     private final ProjectAccess projectAccess;
     private final UserRepository userRepository;
     private final GitHubTokenCipher cipher;
+    private final GitHubTokenService tokenService;
     private final GitHubApiClient githubApi;
     private final SecureRandom random = new SecureRandom();
 
@@ -76,7 +80,7 @@ public class GitHubIntegrationServiceImpl implements GitHubIntegrationService {
         stateRepository.save(pending);
         return UriComponentsBuilder.fromUriString("https://github.com/login/oauth/authorize")
                 .queryParam("client_id", properties.getClientId()).queryParam("redirect_uri", properties.getRedirectUri())
-                .queryParam("scope", "read:user repo").queryParam("state", state).build().encode().toUri();
+                .queryParam("scope", "read:user repo offline_access").queryParam("state", state).build().encode().toUri();
     }
 
     @Override
@@ -105,12 +109,27 @@ public class GitHubIntegrationServiceImpl implements GitHubIntegrationService {
         if (tokenResult == null || !(tokenResult.get("access_token") instanceof String token)) {
             throw new BadRequestException("GitHub authorization failed");
         }
+        Number accessExpiresIn = number(tokenResult.get("expires_in"));
+        String refreshToken = tokenResult.get("refresh_token") instanceof String value && !value.isBlank()
+                ? value : null;
+        GitHubConnection connection = connectionRepository.findByUser_Id(userId).orElseGet(GitHubConnection::new);
+        if (accessExpiresIn != null && refreshToken == null
+                && connection.getEncryptedRefreshToken() == null) {
+            throw new BadRequestException("GitHub did not provide a refresh token. Please try connecting again.");
+        }
         Map<String, Object> profile = githubApi.getMap("/user", token);
         if (!(profile.get("login") instanceof String login)) throw new BadRequestException("GitHub did not return a username");
-        GitHubConnection connection = connectionRepository.findByUser_Id(userId).orElseGet(GitHubConnection::new);
         connection.setUser(userRepository.getReferenceById(userId));
         connection.setGithubLogin(login);
         connection.setEncryptedAccessToken(cipher.encrypt(token));
+        connection.setAccessTokenExpiresAt(accessExpiresIn == null
+                ? null : Instant.now().plusSeconds(accessExpiresIn.longValue()));
+        if (refreshToken != null) {
+            connection.setEncryptedRefreshToken(cipher.encrypt(refreshToken));
+            Number refreshExpiresIn = number(tokenResult.get("refresh_token_expires_in"));
+            connection.setRefreshTokenExpiresAt(refreshExpiresIn == null
+                    ? null : Instant.now().plusSeconds(refreshExpiresIn.longValue()));
+        }
         connectionRepository.save(connection);
     }
 
@@ -128,7 +147,7 @@ public class GitHubIntegrationServiceImpl implements GitHubIntegrationService {
         String name = request.repository().trim();
         GitHubConnection connection = connectionRepository.findByUser_Id(userId)
                 .orElseThrow(() -> new BadRequestException("Connect GitHub before linking a repository"));
-        String token = cipher.decrypt(connection.getEncryptedAccessToken());
+        String token = tokenService.getValidAccessToken(userId);
         githubApi.getMap("/repos/" + owner + "/" + name, token);
         ProjectGitHubRepository linked = projectRepositoryLink.findByProjectId(project.getId())
                 .orElseGet(ProjectGitHubRepository::new);
@@ -153,17 +172,29 @@ public class GitHubIntegrationServiceImpl implements GitHubIntegrationService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<GitHubContributionResponse> contributions(UUID projectId, UUID userId) {
         Project project = requireProject(projectId, userId, false);
         ProjectGitHubRepository linked = projectRepositoryLink.findByProjectId(project.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("No GitHub repository is linked to this project"));
-        GitHubConnection requester = connectionRepository.findByUser_Id(userId)
+        connectionRepository.findByUser_Id(userId)
                 .orElseThrow(() -> new BadRequestException("Connect GitHub to view repository contributions"));
-        String token = cipher.decrypt(requester.getEncryptedAccessToken());
         String repoPath = "/repos/" + linked.getRepositoryOwner() + "/" + linked.getRepositoryName();
-        List<Map<String, Object>> commits = githubPages(repoPath + "/commits?per_page=100", token);
-        List<Map<String, Object>> pulls = githubPages(repoPath + "/pulls?state=all&per_page=100", token);
+        List<Map<String, Object>> commits;
+        List<Map<String, Object>> pulls;
+        String token = tokenService.getValidAccessToken(userId);
+        try {
+            commits = githubPages(repoPath + "/commits?per_page=100", token);
+            pulls = githubPages(repoPath + "/pulls?state=all&per_page=100", token);
+        } catch (HttpClientErrorException.Unauthorized ex) {
+            token = tokenService.refreshAccessToken(userId);
+            try {
+                commits = githubPages(repoPath + "/commits?per_page=100", token);
+                pulls = githubPages(repoPath + "/pulls?state=all&per_page=100", token);
+            } catch (HttpClientErrorException.Unauthorized retryEx) {
+                throw new GitHubReauthorizationRequiredException(retryEx);
+            }
+        }
         Map<String, GitHubConnection> byLogin = connectionRepository.findAll().stream()
                 .collect(Collectors.toMap(c -> c.getGithubLogin().toLowerCase(), c -> c, (a, b) -> a));
         Set<UUID> ids = new HashSet<>();
@@ -255,6 +286,10 @@ public class GitHubIntegrationServiceImpl implements GitHubIntegrationService {
 
     private static Map<?, ?> object(Object value) {
         return value instanceof Map<?, ?> map ? map : null;
+    }
+
+    private static Number number(Object value) {
+        return value instanceof Number number ? number : null;
     }
 
     private static String hash(String value) { return DigestUtils.sha256Hex(value); }

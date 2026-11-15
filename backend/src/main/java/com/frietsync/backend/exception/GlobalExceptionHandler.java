@@ -49,6 +49,20 @@ public class GlobalExceptionHandler {
                 "External service request failed");
     }
 
+    @ExceptionHandler(GitHubReauthorizationRequiredException.class)
+    public ResponseEntity<ErrorResponse> handleGitHubReauthorizationRequired(
+            GitHubReauthorizationRequiredException ex,
+            HttpServletRequest request) {
+        ErrorResponse errorResponse = new ErrorResponse(
+                Instant.now(),
+                HttpStatus.CONFLICT.value(),
+                HttpStatus.CONFLICT.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
+    }
+
     @ExceptionHandler(OAuthExchangeException.class)
     public ResponseEntity<?> handleGoogleOAuthFailure(HttpServletRequest request) {
         return googleErrorResponse(request, HttpStatus.BAD_GATEWAY, "failed",

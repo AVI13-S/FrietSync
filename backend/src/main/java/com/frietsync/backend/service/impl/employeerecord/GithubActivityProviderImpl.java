@@ -8,7 +8,7 @@ import com.frietsync.backend.service.employeerecord.GithubActivity;
 import com.frietsync.backend.service.employeerecord.GithubActivityProvider;
 import com.frietsync.backend.service.employeerecord.GithubRepoActivity;
 import com.frietsync.backend.service.integration.GitHubApiClient;
-import com.frietsync.backend.service.integration.GitHubTokenCipher;
+import com.frietsync.backend.service.integration.GitHubTokenService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,7 +30,7 @@ public class GithubActivityProviderImpl implements GithubActivityProvider {
 
     private final GitHubConnectionRepository connectionRepository;
     private final ProjectGitHubRepositoryRepository linkRepository;
-    private final GitHubTokenCipher cipher;
+    private final GitHubTokenService tokenService;
     private final GitHubApiClient githubApi;
 
     @Override
@@ -40,7 +40,7 @@ public class GithubActivityProviderImpl implements GithubActivityProvider {
             return GithubActivity.notConnected();
         }
         String login = connection.getGithubLogin();
-        String token = cipher.decrypt(connection.getEncryptedAccessToken());
+        String token = tokenService.getValidAccessToken(user.getId());
 
         Map<String, String> repositories = new LinkedHashMap<>();
         for (UUID projectId : projectIds) {
