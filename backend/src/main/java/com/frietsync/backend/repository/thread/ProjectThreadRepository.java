@@ -12,7 +12,7 @@ import java.util.UUID;
 
 public interface ProjectThreadRepository extends JpaRepository<ProjectThread, UUID> {
 
-    Page<ProjectThread> findByProjectIdAndDeletedAtIsNullOrderByCreatedAtDesc(UUID projectId, Pageable pageable);
+    Page<ProjectThread> findByProjectIdAndDeletedAtIsNull(UUID projectId, Pageable pageable);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("update ProjectThread t set t.upvotes = t.upvotes + 1 where t.id = :id")
