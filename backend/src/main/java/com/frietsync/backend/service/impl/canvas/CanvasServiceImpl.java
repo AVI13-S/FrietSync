@@ -205,10 +205,10 @@ public class CanvasServiceImpl implements CanvasService {
         Canvas canvas = findCanvas(canvasId);
         requireEditor(canvas.getProjectId(), userId);
         CanvasElement element = findElement(canvasId, elementId);
-        if (r == null || r.getRevision() == null) {
-            throw new BadRequestException("Canvas item revision is required");
+        if (r == null) {
+            throw new BadRequestException("Canvas item details are required");
         }
-        if (r.getRevision() != element.getRevision()) {
+        if (r.getRevision() != null && r.getRevision() != element.getRevision()) {
             throw new CanvasConflictException("Canvas item changed. Reload it before applying your update.");
         }
         checkFieldLengths(r.getText(), r.getColor(), r.getShape());

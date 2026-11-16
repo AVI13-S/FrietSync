@@ -1,42 +1,150 @@
-# FrietSync - Authentication
+# FrietSync Backend
 
-This is the authentication part of the FrietSync backend. It includes signup, login, JWT authentication, refresh tokens, logout, forgot-password functionality with OTP, and role-based access control.
+FrietSync is a project and team collaboration platform. This repository contains its Java backend: a REST API and authenticated WebSocket services for project planning, collaboration, document search, and AI-assisted chat. It does not contain the web frontend.
 
-## What is in this part
+## Contents
 
-- Signup and login
-- Passwords are stored as BCrypt hashes, never as plain text
-- JWT access tokens are issued after login
-- Refresh tokens are used to obtain new access tokens
-- A filter validates the access token on protected requests
-- Role-based access control for admin routes
-- Forgot-password flow using OTP sent to the user's email
-- Logout and refresh-token handling
-- Invite management for project members
+- [What the backend provides](#what-the-backend-provides)
+- [Architecture and technology](#architecture-and-technology)
+- [Getting started](#getting-started)
+- [APIs](#apis)
+- [Invites](#invites)
+- [Sprints](#sprints)
+- [Authentication](#how-jwt-authentication-works)
+- [Password recovery](#password-recovery)
+- [Security notes](#security-notes)
+- [Troubleshooting](#troubleshooting)
 
-## Folders
+## What the backend provides
 
-- `common/security` contains `JwtUtil`, `JwtAuthFilter`, and `SecurityConfig`
-- `common/exception` contains custom exceptions, `ErrorResponse`, and `GlobalExceptionHandler`
-- `common/mail` contains the classes responsible for sending emails
-- `otp` contains `Otp`, `OtpPurpose`, `OtpRepository`, and `OtpService`
-- `user` contains `AuthController`, DTOs, `User`, `Role`, `UserRepository`, and `AuthService`
+- **Accounts and access:** email signup, OTP verification, JWT access tokens, refresh-token cookies, invitations, workspace membership, and role-based permissions.
+- **Project planning:** projects, issues, labels, assignments, issue links and checklists, sprints, milestones, releases, boards, calendars, Gantt data, and project history.
+- **Team collaboration:** project chat, threaded discussions and comments, polls, workspace community posts and reactions, meetings, live presence, notifications, and project calls.
+- **Shared workspaces:** live collaborative canvases with conversion of canvas elements into issues.
+- **Documents and AI:** project document upload and download, text extraction, semantic search, and RAG chat that can retrieve from project documents and other indexed project data.
+- **Reporting and integrations:** project budgets and expenses, employee records, daily briefings, replay snapshots, and Google and GitHub OAuth integrations.
 
-## What each main class does
+## Architecture and technology
 
-- **AuthController** handles authentication requests such as signup, login, OTP verification, password reset, refresh, and logout
-- **AuthServiceImpl** contains the business logic for signup, login, OTP verification, password reset, token refresh, and logout
-- **JwtUtil** creates and validates JWT access tokens
-- **JwtAuthFilter** reads the access token from the request, validates it, and identifies the authenticated user
-- **SecurityConfig** defines which URLs are public and which require authentication or specific roles
-- **OtpService** generates OTPs, sends them by email, validates them, and handles OTP expiration and usage
-- **GlobalExceptionHandler** converts application exceptions into consistent API error responses
+The backend is organized as a Spring application. HTTP controllers map requests to services; services implement business rules and call repositories; JPA entities map application data to PostgreSQL. WebSocket message handlers provide authenticated, project-scoped real-time features. Flyway manages database schema changes.
+
+| Area | Technology |
+|---|---|
+| Runtime and API | Java 25, Spring Boot 4.1.1, Spring MVC, Spring Security |
+| Authentication | JWT access tokens, HTTP-only refresh-token cookies, BCrypt password hashing |
+| Database | PostgreSQL with pgvector; Flyway migrations |
+| Cache and ephemeral state | Redis |
+| AI and embeddings | Spring AI with Google Gemini models |
+| Documents | Apache Tika text extraction and AWS S3 object storage |
+| Upload protection | ClamAV file scanning when enabled |
+| Real-time messaging | STOMP over WebSocket; Janus is used for project calls |
+
+Important source directories under `backend/src/main/java/com/frietsync/backend`:
+
+| Directory | Contents |
+|---|---|
+| `controller` | REST and WebSocket endpoints, grouped by feature |
+| `service` | Business logic and integration clients |
+| `repository` | Spring Data and custom database queries |
+| `entity` | Persisted JPA models |
+| `dto` | API request and response types |
+| `config` | Security, database, storage, AI, and WebSocket configuration |
+| `exception` | Application exceptions and API error handling |
+
+Flyway scripts are in `backend/src/main/resources/db/migration`.
+
+## Getting started
+
+### Requirements
+
+- Docker Desktop with Docker Compose for the recommended setup, or Java 25 plus accessible PostgreSQL and Redis instances for running the application directly.
+- Credentials for any external services you intend to use (for example, Gemini, AWS S3, SMTP, Google/GitHub OAuth, ClamAV, or Janus). These integrations are not all provided as Docker Compose services.
+
+### Run the complete local stack with Docker
+
+From the repository root, copy the example configuration and edit it:
+
+```powershell
+Copy-Item backend\.env.example backend\.env
+```
+
+In `backend\.env`, set the database URL to the Compose service name, and configure database and Redis credentials:
+
+```dotenv
+DB_URL=jdbc:postgresql://postgres:5432/frietsync
+DB_USERNAME=frietsync
+DB_PASSWORD=change-this-password
+REDIS_HOST=redis
+REDIS_PASSWORD=change-this-password
+```
+
+Use the same database username and password for the PostgreSQL container. Compose defaults `POSTGRES_DB` to `frietsync`. Set real credentials for integrations you use; do not commit `backend\.env` or paste secrets into the README.
+
+Start the backend, PostgreSQL, and Redis:
+
+```powershell
+docker compose --env-file backend\.env -f backend\docker-compose.yml up --build -d
+docker compose --env-file backend\.env -f backend\docker-compose.yml ps
+```
+
+Follow backend logs and check the health endpoint:
+
+```powershell
+docker compose --env-file backend\.env -f backend\docker-compose.yml logs -f backend
+curl.exe http://localhost:8080/api/v1/check
+```
+
+The health endpoint should return `{"status":"ok"}`. The backend is published on `http://localhost:8080`; PostgreSQL and Redis are available to the backend over the Compose network and are not published to host ports by default. `docker compose down` stops the services but preserves the named data volumes; `docker compose down -v` also deletes the local database and Redis data.
+
+### Run the application directly
+
+Start PostgreSQL (with pgvector) and Redis separately, then configure `backend\.env` to use host-accessible addresses, for example `localhost` for both services. From the `backend` directory, run:
+
+```powershell
+.\mvnw.cmd spring-boot:run
+```
+
+For this mode, `DB_URL` should point to the local PostgreSQL host, such as `jdbc:postgresql://localhost:5432/frietsync`. Do not use the Docker service names `postgres` or `redis` when running the application directly on the host.
+
+### Configuration and external services
+
+[`backend/.env.example`](backend/.env.example) lists the configuration keys consumed by `application.properties`. Copy it to `backend\.env` and replace placeholders. Never commit a populated `.env` file.
+
+| Configuration | Used for |
+|---|---|
+| `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | PostgreSQL connection |
+| `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_SSL` | Redis connection |
+| `JWT_SECRET`, `JWT_EXPIRATION_MS` | Access-token signing and expiry |
+| `REFRESH_COOKIE_SECURE`, `REFRESH_COOKIE_SAME_SITE`, `ALLOWED_ORIGINS` | Cookie and CORS policy |
+| `MAIL_USERNAME`, `MAIL_PASSWORD` | OTP and notification email |
+| `AWS_REGION`, `AWS_S3_BUCKET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Uploaded files and generated assets in AWS S3; session token is optional |
+| `GEMINI_API_KEY` | Gemini chat and embedding requests |
+| `GOOGLE_*`, `GITHUB_*` | OAuth client credentials, callbacks, encryption keys, and frontend redirect URLs |
+| `CLAMAV_HOST`, `CLAMAV_PORT`, `CLAMAV_ENABLED` | Malware scanning for supported uploads |
+| `JANUS_*` | Project voice/video calls |
+| `RECAPTCHA_*` | Optional signup verification |
+| `INVITE_VALIDITY_DAYS`, `INVITES_URL` | Invitation expiry and frontend link |
+| `FLYWAY_ENABLED`, `JPA_DDL_AUTO` | Schema migration and Hibernate validation behavior |
+
+The Compose stack includes PostgreSQL, Redis, and the backend only. Configure an AWS S3 bucket and Gemini key for document uploads and AI features. If `CLAMAV_ENABLED=true`, a reachable ClamAV server is required for uploads; for local development without ClamAV, disable scanning explicitly. OAuth callbacks must exactly match the URLs configured at the identity provider. Voice/video calls additionally require Janus; the optional `voice` Compose profile expects a Janus configuration directory. Enable that profile with `docker compose --env-file backend\.env -f backend\docker-compose.yml --profile voice up -d`.
+
+### Build and test
+
+From `backend`:
+
+```powershell
+.\mvnw.cmd test
+.\mvnw.cmd package
+.\mvnw.cmd checkstyle:check
+```
+
+The Dockerfile builds the application with tests skipped, so run the test command separately when validating code changes. Database schema changes belong in a new Flyway migration; do not modify migrations already applied to shared or deployed databases.
 
 ## APIs
 
-The backend routes are grouped under `/api/v1`, with selected v2 endpoints under `/api/v2`. Protected endpoints require `Authorization: Bearer <access-token>` unless noted otherwise.
+The backend routes are grouped under `/api/v1`, with selected v2 endpoints under `/api/v2`. Protected endpoints require `Authorization: Bearer <access-token>` unless noted otherwise. An `Authenticated` access label means the endpoint needs a valid access token; project/workspace membership, resource ownership, and role checks are enforced separately by the relevant service.
 
-For copyable JSON request and response examples, including multipart, binary-download, OAuth, and WebSocket operations, see the [API request and response examples](docs/API_EXAMPLES.md). The reference covers every controller route and identifies endpoints that have no JSON body.
+The API tables below describe the main routes and feature-specific behavior. For the live request schemas and a try-it-out interface, run the backend and open [Swagger UI](http://localhost:8080/swagger-ui.html); the generated OpenAPI document is available at `http://localhost:8080/v3/api-docs`. Multipart uploads, binary downloads, OAuth callbacks, and WebSocket messages have additional notes in their feature sections below.
 
 | Method | URL | Access | Request body / notes |
 |---|---|---|---|
@@ -49,7 +157,7 @@ For copyable JSON request and response examples, including multipart, binary-dow
 | POST | `/api/v1/auth/reset-password` | Public | `email, code, newPassword` |
 | POST | `/api/v1/auth/refresh` | Refresh-token cookie | No body; returns a new `accessToken` and refresh-token cookie |
 | POST | `/api/v1/auth/logout` | Refresh-token cookie | No body; invalidates the refresh token and clears the cookie |
-| POST | `/api/v1/admin/invites` | Admin | `email, role`, optional `expiresAt` |
+| POST | `/api/v1/admin/invites` | Admin | `email, purpose`, role when required, optional `projectId` and `expiresAt` |
 | POST | `/api/v1/admin/invites/revoke` | Admin | `inviteId` |
 | GET | `/api/v1/invites/me` | Authenticated | Lists the current user's pending invites |
 | POST | `/api/v1/invites/accept` | Authenticated | `inviteId` |
@@ -64,7 +172,7 @@ For copyable JSON request and response examples, including multipart, binary-dow
 
 ## Additional backend endpoints
 
-The backend also exposes authenticated routes for workspaces, projects, issues, meetings, polls, releases, milestones, notifications, and chat. Unless specifically listed as public above, these endpoints require a valid access token.
+The backend also exposes routes for workspaces, projects, issues, meetings, polls, releases, milestones, notifications, chat, community, canvases, calls, threads, semantic search, and AI chat. Unless specifically listed as public above, these endpoints require a valid access token; the service applies the relevant workspace, project, resource, and role checks.
 
 ### GitHub integration
 
@@ -90,7 +198,7 @@ Each member connects their own GitHub account to associate a GitHub login with t
 | GET | `/api/v1/workspaces/{workspaceId}` | Authenticated | Get workspace details |
 | PATCH | `/api/v1/workspaces/{workspaceId}` | Authenticated | Update a workspace |
 | GET | `/api/v1/workspaces/{workspaceId}/members` | Authenticated | List workspace members |
-| POST | `/api/v1/projects` | Authenticated | Create a project |
+| POST | `/api/v1/projects` | Admin | Create a project |
 | GET | `/api/v1/projects/me` | Authenticated | List the user's projects |
 | GET | `/api/v1/projects/{projectId}` | Authenticated | Get a project, including `githubRepositoryOwner` and `githubRepositoryName` when a GitHub repository is linked (both are `null` otherwise) |
 | PUT | `/api/v1/projects/{projectId}` | Authenticated | Update a project (`multipart/form-data`) |
@@ -122,7 +230,7 @@ Each member connects their own GitHub account to associate a GitHub login with t
 | PATCH | `/api/v1/issues/{issueId}/status` | Project admin or project manager | Set the issue status to any `IssueStatus` value |
 | DELETE | `/api/v1/issues/{issueId}` | Authenticated | Delete an issue |
 | POST | `/api/v1/issues/{issueId}/resolve` | Authenticated | Resolve an issue |
-| GET | `/api/v1/issues/{issueId}/history` | Authenticated | View issue history |
+| GET | `/api/v1/issues/{issueId}/history?page=0&size=20` | Authenticated | Paginated history; responses include a readable `message` and retain the raw `action` |
 | POST | `/api/v1/issues/{issueId}/review/approve` | Authenticated | Approve an issue review |
 | POST | `/api/v1/issues/{issueId}/review/reject` | Authenticated | Reject an issue review |
 | POST | `/api/v1/issues/{issueId}/labels` | Authenticated | Add an issue label |
@@ -173,15 +281,16 @@ Project admins and project managers can set issue and sprint statuses directly t
 | GET | `/api/v1/projects/{projectId}/chat/messages/around/{messageId}?before=25&after=25` | Authenticated | Fetch a message window; each count is 0–50 |
 | PATCH | `/api/v1/projects/{projectId}/chat/messages/{messageId}` | Authenticated | Edit a chat message |
 | DELETE | `/api/v1/projects/{projectId}/chat/messages/{messageId}` | Authenticated | Delete a chat message |
+| POST | `/api/v1/projects/{projectId}/chat/messages/{messageId}/forward` | Authenticated | Forward a message to another project |
 | POST | `/api/v1/projects/{projectId}/chat/attachments` | Authenticated | Upload multipart `file` |
 | GET | `/api/v1/projects/{projectId}/chat/attachments?page=0` | Authenticated | List project chat attachments |
 | GET | `/api/v1/projects/{projectId}/chat/attachments/{attachmentId}/download` | Authenticated | Download a chat attachment |
+| GET | `/api/v1/projects/{projectId}/chat/pinned-messages` | Authenticated | List pinned chat messages |
+| PUT | `/api/v1/projects/{projectId}/chat/messages/{messageId}/pin` | Authenticated | Pin a chat message |
+| DELETE | `/api/v1/projects/{projectId}/chat/messages/{messageId}/pin` | Authenticated | Unpin a chat message |
 | GET | `/api/v1/projects/{projectId}/chat/mute` | Authenticated | Get your project chat mute state |
 | PUT | `/api/v1/projects/{projectId}/chat/mute` | Authenticated | Update your project chat mute state |
 | DELETE | `/api/v1/projects/{projectId}/chat/mute` | Authenticated | Clear your project chat mute state |
-| POST | `/app/projects/{projectId}/chat` | Authenticated | WebSocket destination for chat messages |
-| SUBSCRIBE | `/app/projects/{projectId}/activity` | Authenticated | Receive the latest 10 issue, milestone, and poll-creation activity events once |
-| SUBSCRIBE | `/topic/projects/{projectId}/activity` | Authenticated | Receive the refreshed latest 10 issue, milestone, and poll-creation events |
 | GET | `/api/v1/notifications` | Authenticated | List notifications |
 | POST | `/api/v1/notifications/{id}/read` | Authenticated | Mark a notification as read |
 | POST | `/api/v1/notifications/read-all` | Authenticated | Mark all notifications as read |
@@ -221,9 +330,8 @@ Project admins and project managers can set issue and sprint statuses directly t
 | DELETE | `/api/v1/documents/{documentId}` | Authenticated | Delete a document |
 | GET | `/api/v1/projects/{projectId}/presence` | Authenticated | Get current project presence |
 | GET | `/api/v1/projects/{projectId}/activity` | Authenticated | Get the latest 10 issue, milestone, and poll-creation events |
-| GET | `/api/v1/projects/{projectId}/events` | Authenticated | List project events |
-| GET | `/api/v1/projects/{projectId}/summary` | Authenticated | Get project summary |
-| GET | `/api/v1/projects/{projectId}/summary/pdf` | Authenticated | Download project summary as PDF |
+| GET | `/api/v1/projects/{projectId}/events?action={action}&page=0&size=20` | Authenticated | Paginated project events; `action` is optional and `size` is 1–100 |
+| GET | `/api/v1/projects/{projectId}/summary` | Authenticated | Get the project summary as JSON |
 | GET | `/api/v1/projects/{projectId}/board` | Authenticated | Get the project issue board |
 | GET | `/api/v1/projects/{projectId}/calendar` | Authenticated | Get project calendar data |
 | GET | `/api/v1/projects/{projectId}/timeline` | Authenticated | Get project timeline data |
@@ -256,7 +364,134 @@ Project admins and project managers can set issue and sprint statuses directly t
 | GET | `/api/v1/integrations/google/callback` | OAuth callback | Complete Google OAuth and redirect to the frontend |
 | DELETE | `/api/v1/integrations/google/disconnect` | Authenticated | Disconnect the Google account |
 
-The application also supports STOMP over `/ws`. The chat send destination is `/app/projects/{projectId}/chat`; clients receive project chat updates from `/topic/projects/{projectId}/chat`. For project activity, subscribe to `/topic/projects/{projectId}/activity` for refreshed latest-10 lists, and `/app/projects/{projectId}/activity` for the current snapshot. The feed includes issue creation, edits, and completion; milestone creation, edits, and completion; and poll creation. WebSocket connections use the authenticated access token and project subscriptions require project membership. See the poll and notification sections for their topic and queue destinations.
+### Additional API routes
+
+These routes are part of the current controllers and complement the feature tables above. Unless noted otherwise, they require a valid access token and the corresponding project or workspace access.
+
+| Method | URL | Purpose |
+|---|---|---|
+| GET | `/api/v1/workspaces/deleted` | List deleted workspaces available to the user |
+| POST | `/api/v1/projects/{projectId}/restore` | Restore a deleted project |
+| POST | `/api/v1/milestones/{milestoneId}/restore` | Restore a deleted milestone |
+| GET, POST | `/api/v1/users/me/skills` | List or add the current user's skills |
+| DELETE | `/api/v1/users/me/skills/{skillId}` | Remove one of the current user's skills |
+| GET | `/api/v1/projects/{projectId}/issues/checklist` | Get issue checklist data for a project |
+| POST | `/api/v1/issues/{issueId}/restore` | Restore a deleted issue |
+| GET | `/api/v1/sprints/me` | List sprints assigned to the current user |
+| GET | `/api/v1/issues/{issueId}/sprints` | Get sprints associated with an issue |
+| POST | `/api/v1/sprints/{sprintId}/restore` | Restore a deleted sprint |
+| POST | `/api/v1/sprints/{sprintId}/assign` | Assign a sprint to a project contributor |
+| POST | `/api/v1/sprints/{sprintId}/request` | Request assignment to a sprint |
+| GET | `/api/v1/projects/{projectId}/sprints-requests` | List sprint assignment requests |
+| POST | `/api/v1/sprints/{sprintId}/sprints-requests` | Approve a sprint assignment request |
+| GET | `/api/v1/projects/{projectId}/gantt` | Get Gantt chart data |
+| GET | `/api/v1/projects/{projectId}/gantt/critical-path` | Get the project's critical path |
+| PATCH | `/api/v1/projects/{projectId}/gantt/issues/{issueId}` | Update an issue's Gantt scheduling data |
+| PATCH | `/api/v1/projects/{projectId}/gantt/sprints/{sprintId}` | Update a sprint's Gantt scheduling data |
+| POST, DELETE | `/api/v1/projects/{projectId}/gantt/baseline` | Create or remove the Gantt baseline |
+| POST | `/api/v1/issues/{issueId}/review/approve` | Approve an issue review |
+| POST | `/api/v1/issues/{issueId}/review/reject` | Reject an issue review |
+| GET | `/api/v1/search/semantic?q={query}` | Search indexed project content semantically; optional `projectId`, `type`, and `status` filters |
+| POST | `/api/v1/ai-chat/ask` | Ask the RAG chatbot a question |
+| PUT | `/api/v1/ai-chat/messages/{messageId}/feedback` | Save feedback for an AI chat response |
+| GET, POST | `/api/v1/projects/{projectId}/threads` | List or create project discussion threads |
+| GET, DELETE | `/api/v1/projects/{projectId}/threads/{threadId}` | Get or delete a thread |
+| POST | `/api/v1/projects/{projectId}/threads/{threadId}/comments` | Add a comment or nested reply to a thread |
+| POST | `/api/v1/projects/{projectId}/threads/{threadId}/upvote` | Toggle the current user's upvote on a thread |
+| POST, GET | `/api/v1/projects/{projectId}/canvases` | Create or list project canvases |
+| GET, PATCH, DELETE | `/api/v1/canvases/{canvasId}` | Get, rename, or delete a canvas |
+| POST | `/api/v1/projects/{projectId}/calls` | Start a project call; body may specify `type` (`VOICE` by default) |
+| GET | `/api/v1/projects/{projectId}/calls/active` | Get the active call, optionally filtered by `type` |
+| POST | `/api/v1/projects/{projectId}/calls/{callId}/join` | Join a call and get its connection details |
+| POST | `/api/v1/projects/{projectId}/calls/{callId}/leave` | Leave a call |
+| POST | `/api/v1/projects/{projectId}/calls/{callId}/end` | End a call |
+| POST, GET | `/api/v1/workspaces/{workspaceId}/community/posts` | Create or list workspace community posts |
+| GET | `/api/v1/workspaces/{workspaceId}/community/posts/pinned` | List pinned community posts |
+| GET, PATCH, DELETE | `/api/v1/workspaces/{workspaceId}/community/posts/{postId}` | Get, edit, or delete a post |
+| POST, DELETE | `/api/v1/workspaces/{workspaceId}/community/posts/{postId}/pin` | Pin or unpin a post |
+| PUT, DELETE | `/api/v1/workspaces/{workspaceId}/community/posts/{postId}/reaction` | Add or remove a post reaction |
+| POST, GET | `/api/v1/workspaces/{workspaceId}/community/posts/{postId}/comments` | Add or list post comments |
+| PATCH, DELETE | `/api/v1/workspaces/{workspaceId}/community/posts/{postId}/comments/{commentId}` | Edit or delete a comment |
+| PUT, DELETE | `/api/v1/workspaces/{workspaceId}/community/posts/{postId}/comments/{commentId}/reaction` | Add or remove a comment reaction |
+| POST | `/api/v2/projects/{projectId}/issues` | Create an issue using the v2 API |
+
+Community posts and comments are paginated with `page` (default `0`) and `size` (default `20`). Authors and users with the `ADMIN` role can edit or delete posts and comments; only users with the `ADMIN` role can pin or unpin posts. For precise request and response schemas, use Swagger UI.
+
+### Documents, semantic search, and RAG
+
+Text documents are created with `POST /api/v1/projects/{projectId}/documents` using JSON:
+
+```json
+{
+  "title": "Deployment notes",
+  "content": "The release is deployed to staging before production."
+}
+```
+
+`title` is required; `content` is optional and limited to 50,000 characters. File uploads use `multipart/form-data` with a required `file` part and optional `title`; the upload limit is 25 MB. Supported formats include PDF, DOC/DOCX, PPT/PPTX, XLS/XLSX, ODT/ODS/ODP, RTF, TXT, Markdown, CSV, HTML, XML, and EPUB. Uploaded files are stored in the configured AWS S3 bucket; authorized project members download the original file through `/api/v1/documents/{documentId}/download`. The upload response includes the document ID, filename, content type, size, download URL, and extracted text.
+
+Example:
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/projects/<project-id>/documents/upload" \
+  -H "Authorization: Bearer <access-token>" \
+  -F "file=@project-plan.pdf" \
+  -F "title=Project plan"
+```
+
+Apache Tika extracts readable text on upload. Up to 50,000 characters are stored and split into overlapping chunks for embedding. These chunks are included in semantic search and RAG retrieval. Password-protected, malformed, or otherwise unextractable files may be rejected. Scanned/image-only PDFs need OCR to yield searchable text; OCR is not configured.
+
+Semantic search accepts `q` and optional filters:
+
+```http
+GET /api/v1/search/semantic?q=deployment%20plan&projectId=<project-uuid>&type=DOCUMENT
+Authorization: Bearer <access-token>
+```
+
+The AI chat endpoint accepts a question and optional project scope:
+
+```http
+POST /api/v1/ai-chat/ask
+Authorization: Bearer <access-token>
+Content-Type: application/json
+
+{
+  "projectId": "<project-uuid>",
+  "question": "What does the uploaded deployment plan say about rollback?"
+}
+```
+
+`projectId` may be omitted to search across projects the user can access. The response includes `messageId`, an `answer`, and source references when available. Use `PUT /api/v1/ai-chat/messages/{messageId}/feedback` to submit feedback for a response. AI and embedding calls require a configured Gemini API key.
+
+### Project threads
+
+Threads are project-scoped discussions. Members of an active project can list and create threads, add comments or nested replies (`parentCommentId`), and toggle an upvote. Create a thread with `{"title":"...", "content":"..."}`; add a comment with `{"content":"...", "parentCommentId":null}`. Thread titles are limited to 200 characters, content to 10,000, and comments to 2,000. Listing defaults to 20 newest threads per page; sorting supports `createdAt`, `upvotes`, or `title`. A thread can be deleted by its author, a project admin, or a project manager. Thread creation, comments, deletion, and upvotes require an active project.
+
+### Workspace community and collaborative canvases
+
+Workspace community posts support paging, pinning, reactions, and comments. The author can edit or remove their content; moderation actions are permission-checked by the service. Changes are broadcast to `/topic/workspaces/{workspaceId}/community`.
+
+Canvases are created and managed through the REST routes above. Element create, update, delete, and convert-to-issue operations are sent over STOMP. Include an element's `revision` from the latest canvas response in update payloads to reject stale edits; updates without it are accepted for clients that do not yet send revisions. Canvas updates are broadcast to `/topic/canvases/{canvasId}`; conversion results and socket errors are delivered to the user's queue.
+
+### Project calls
+
+The calls API starts, joins, leaves, and ends voice/video calls. Janus provides the media server; configuring the API alone does not provide a media server. Configure `JANUS_BASE_URL` and related Janus secrets, then run a reachable Janus instance (the Compose `voice` profile is optional and requires the configured Janus files). Call lifecycle changes are broadcast on `/topic/projects/{projectId}/calls`.
+
+The application also supports authenticated STOMP over `/ws`. Include `Authorization: Bearer <access-token>` in the STOMP `CONNECT` headers. Client messages go to `/app/...`; server broadcasts are received from `/topic/...`; user-specific events use `/user/queue/...`.
+
+| Feature | Client sends/subscribes to | Server sends to |
+|---|---|---|
+| Project chat | Send messages to `/app/projects/{projectId}/chat`; send typing events to `/app/projects/{projectId}/chat/typing` | Subscribe to `/topic/projects/{projectId}/chat` and `/topic/projects/{projectId}/chat/typing` |
+| Project activity | Subscribe to `/app/projects/{projectId}/activity` for the current snapshot | Subscribe to `/topic/projects/{projectId}/activity` for refreshed latest-10 activity |
+| Issue history | Subscribe to `/topic/issues/{issueId}/history` | Issue history updates, including a readable `message` and the raw action |
+| Poll results | Subscribe to `/topic/polls/{pollId}/results` | Poll created, updated, and closed events |
+| AI chat streaming | Send a `RagChatRequest` to `/app/ai-chat` | Subscribe to `/user/queue/ai-chat`; events are `started`, `chunk`, `completed`, or `error` |
+| Canvas collaboration | Send create/update/delete/convert-to-issue messages under `/app/canvases/{canvasId}/elements/...` | Subscribe to `/topic/canvases/{canvasId}`; conversion results and canvas errors use user queues |
+| Calls | No client send destination | Subscribe to `/topic/projects/{projectId}/calls` for call events |
+| Workspace community | No client send destination | Subscribe to `/topic/workspaces/{workspaceId}/community` for post/comment changes |
+| Notifications | No client send destination | Subscribe to `/user/queue/notifications` |
+
+Activity snapshots contain the latest 10 issue, milestone, and poll-creation events. WebSocket connections require a valid access token; protected destinations and operations are checked by the backend.
 
 Notifications are generated for issue assignment and review activity, project membership and role changes, comments and mentions, sprint assignment requests and assignments, poll creation, meetings, invites, and chat messages. To mention users in an issue or sprint comment, include their project participant IDs in the optional `mentionedUserIds` array alongside `content` (up to 50 IDs). Notifications are available through the notifications API and the `/user/queue/notifications` WebSocket destination. Email delivery follows each user's notification preferences.
 
@@ -560,20 +795,16 @@ Example:
 The authentication flow works as follows:
 
 1. The user logs in with their email and password.
-2. The server validates the credentials.
-3. The server returns an access token and sets the refresh token as an HTTP-only cookie.
-4. The frontend sends the access token with requests to protected endpoints.
-
-The access token is sent in the `Authorization` header:
+2. The server validates the credentials, returns an access token, and sets the refresh token as an HTTP-only cookie.
+3. The client sends the access token with requests to protected endpoints in the `Authorization` header:
 
 ```http
 Authorization: Bearer <access-token>
 ```
 
-5. `JwtAuthFilter` reads the token from the request.
-6. `JwtUtil` validates the token.
-7. If the token is valid, the authenticated user's information is placed into the Spring Security context.
-8. `SecurityConfig` checks whether the authenticated user is allowed to access the requested endpoint.
+4. `JwtAuthFilter` reads the token and `JwtUtil` validates it.
+5. If the token is valid, the user's identity is placed in the Spring Security context.
+6. `SecurityConfig` and the relevant service check whether that user may access the requested endpoint.
 
 ### Access control
 
@@ -604,7 +835,7 @@ Logout invalidates the refresh token so that it cannot be used to obtain new acc
 
 ---
 
-## Forgot Password
+## Password recovery
 
 The forgot-password flow works in three steps.
 
@@ -687,3 +918,18 @@ The OTP is then marked as used.
 - Refresh tokens are invalidated during logout
 - OTPs expire after their configured validity period
 - OTPs are single-use
+- Use HTTPS in production and set `REFRESH_COOKIE_SECURE=true`
+- Restrict `ALLOWED_ORIGINS` to the actual frontend origins
+- Use strong, private values for JWT, OAuth encryption, database, SMTP, S3, and Janus credentials; never commit populated `.env` files
+
+## Troubleshooting
+
+| Symptom | Checks |
+|---|---|
+| Backend cannot connect to PostgreSQL or Redis in Docker | Use `postgres` and `redis` as the service hostnames in `backend\.env`; `localhost` inside a container refers to that container, not the host |
+| Backend fails Hibernate schema validation | Confirm Flyway is enabled and inspect backend logs for migration errors. New migrations must use the `V<number>__description.sql` naming format and a version higher than the latest applied migration |
+| Document upload fails | Verify the file extension and 25 MB limit, AWS S3 bucket/credentials, and ClamAV availability when `CLAMAV_ENABLED=true` |
+| RAG does not find a document | Confirm extraction completed, the file has selectable text, indexing/embedding succeeded, and the requester can access the project. Scanned PDFs require OCR, which is not configured |
+| WebSocket connection or subscription is rejected | Send a valid, unexpired bearer token in the STOMP `CONNECT` `Authorization` header, use an allowed origin, and subscribe/send to a supported destination for a project or workspace the user can access |
+| Google or GitHub OAuth fails | Check that the provider's registered callback URL exactly matches `GOOGLE_REDIRECT_URI` or `GITHUB_REDIRECT_URI`, and verify client credentials and encryption-key configuration |
+| Docker services appear stopped | From the repository root, run `docker compose --env-file backend\.env -f backend\docker-compose.yml ps` and inspect `docker compose --env-file backend\.env -f backend\docker-compose.yml logs backend`; use `GET /api/v1/check` after startup to check the HTTP service |
