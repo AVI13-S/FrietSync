@@ -35,6 +35,7 @@ import com.frietsync.backend.repository.project.ProjectRepository;
 import com.frietsync.backend.repository.project.MilestoneRepository;
 import com.frietsync.backend.repository.project.ReleaseIssueRepository;
 import com.frietsync.backend.repository.user.UserRepository;
+import com.frietsync.backend.service.impl.activity.ActivityMessageFormatter;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
 import com.frietsync.backend.service.impl.project.MilestoneCompletionService;
 import com.frietsync.backend.service.issue.IssueAttachmentService;
@@ -461,6 +462,8 @@ public class IssueServiceImpl implements IssueService {
                         .actorId(h.getActorId())
                         .actorName(actorNames.get(h.getActorId()))
                         .action(h.getAction())
+                        .message(ActivityMessageFormatter.forIssue(
+                                h, issue.getIssueNumber(), issue.getTitle(), actorNames.get(h.getActorId())))
                         .field(h.getFieldName())
                         .oldValue(h.getOldValue())
                         .newValue(h.getNewValue())
