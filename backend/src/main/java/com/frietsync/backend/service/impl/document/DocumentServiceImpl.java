@@ -51,6 +51,7 @@ public class DocumentServiceImpl implements DocumentService {
     private final ProjectDocumentRepository documentRepository;
     private final UserRepository userRepository;
     private final DocumentEmbeddingService documentEmbeddingService;
+    private final DocumentTextExtractor documentTextExtractor;
     private final S3Client s3Client;
     private final S3ObjectCleanupService cleanupService;
     private final VirusScanService virusScanService;
@@ -141,6 +142,7 @@ public class DocumentServiceImpl implements DocumentService {
         }
 
         virusScanService.scanFile(file);
+        String extractedContent = documentTextExtractor.extract(file, fileName);
 
         String key = "project-documents/" + projectId + "/" + UUID.randomUUID() + "-" + fileName;
         try (java.io.InputStream input = file.getInputStream()) {
@@ -158,7 +160,7 @@ public class DocumentServiceImpl implements DocumentService {
         ProjectDocument document = new ProjectDocument();
         document.setProjectId(projectId);
         document.setTitle(documentTitle);
-        document.setContent("");
+        document.setContent(extractedContent);
         document.setFileKey(key);
         document.setFileName(fileName);
         document.setFileContentType(contentType);
@@ -166,6 +168,7 @@ public class DocumentServiceImpl implements DocumentService {
         document.setCreatedBy(userId);
         document.setLastEditedBy(userId);
         document = documentRepository.save(document);
+        documentEmbeddingService.generateAndSaveChunks(document);
         return toResponse(document);
     }
 

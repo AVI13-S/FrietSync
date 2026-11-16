@@ -143,6 +143,12 @@
 			<version>2.55.12</version>
 		</dependency>
 		<dependency>
+			<groupId>org.apache.tika</groupId>
+			<artifactId>tika-parsers-standard-package</artifactId>
+			<version>4.2.0</version>
+			<type>pom</type>
+		</dependency>
+		<dependency>
 			<groupId>fi.solita.clamav</groupId>
 			<artifactId>clamav-client</artifactId>
 			<version>1.0.1</version>

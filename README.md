@@ -214,7 +214,9 @@ Project admins and project managers can set issue and sprint statuses directly t
 | DELETE | `/api/v1/sprints/{sprintId}/comments/{commentId}` | Authenticated | Delete a sprint comment |
 | GET | `/api/v1/projects/{projectId}/documents` | Authenticated | List project documents |
 | POST | `/api/v1/projects/{projectId}/documents` | Authenticated | Create a project document |
+| POST | `/api/v1/projects/{projectId}/documents/upload` | Project manager or team lead | Upload a document as multipart `file`; optional `title`; max 25 MB; supports PDF, Word, PowerPoint, Excel, OpenDocument, RTF, text, Markdown, CSV, HTML, XML, and EPUB; extracts text for semantic search and RAG |
 | GET | `/api/v1/documents/{documentId}` | Authenticated | Get a document |
+| GET | `/api/v1/documents/{documentId}/download` | Project member | Download an uploaded project document |
 | PATCH | `/api/v1/documents/{documentId}` | Authenticated | Update a document |
 | DELETE | `/api/v1/documents/{documentId}` | Authenticated | Delete a document |
 | GET | `/api/v1/projects/{projectId}/presence` | Authenticated | Get current project presence |
