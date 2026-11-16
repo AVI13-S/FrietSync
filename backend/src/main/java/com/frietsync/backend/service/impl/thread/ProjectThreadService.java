@@ -8,7 +8,6 @@ import com.frietsync.backend.dto.thread.ThreadSummaryResponse;
 import com.frietsync.backend.entity.project.Project;
 import com.frietsync.backend.entity.thread.ProjectThread;
 import com.frietsync.backend.entity.thread.ThreadComment;
-import com.frietsync.backend.entity.thread.ThreadVote;
 import com.frietsync.backend.entity.user.User;
 import com.frietsync.backend.exception.BadRequestException;
 import com.frietsync.backend.exception.ResourceNotFoundException;
@@ -18,7 +17,6 @@ import com.frietsync.backend.repository.thread.ThreadVoteRepository;
 import com.frietsync.backend.repository.user.UserRepository;
 import com.frietsync.backend.service.impl.project.ProjectAccess;
 import lombok.RequiredArgsConstructor;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -165,25 +163,28 @@ public class ProjectThreadService {
 
         getActiveThread(projectId, threadId);
 
-        boolean votedNow;
-        if (voteRepository.deleteVote(threadId, userId) > 0) {
-            threadRepository.decrementUpvotes(threadId);
-            votedNow = false;
-        } else {
-            ThreadVote vote = new ThreadVote();
-            vote.setThreadId(threadId);
-            vote.setUserId(userId);
-            try {
-                voteRepository.saveAndFlush(vote);
-            } catch (DataIntegrityViolationException e) {
-                throw new BadRequestException("Vote already registered, please retry");
-            }
+        if (voteRepository.insertVoteIfAbsent(UUID.randomUUID(), threadId, userId) > 0) {
             threadRepository.incrementUpvotes(threadId);
-            votedNow = true;
         }
 
         ProjectThread fresh = getActiveThread(projectId, threadId);
-        return toSummary(fresh, loadUserNames(List.of(fresh.getAuthorId())), votedNow);
+        return toSummary(fresh, loadUserNames(List.of(fresh.getAuthorId())), true);
+    }
+
+    @Transactional
+    public ThreadSummaryResponse removeUpvote(UUID projectId, UUID threadId, UUID userId) {
+        Project project = projectAccess.project(projectId);
+        projectAccess.requireMember(project, userId);
+        projectAccess.requireActiveProject(project);
+
+        getActiveThread(projectId, threadId);
+
+        if (voteRepository.deleteVote(threadId, userId) > 0) {
+            threadRepository.decrementUpvotes(threadId);
+        }
+
+        ProjectThread fresh = getActiveThread(projectId, threadId);
+        return toSummary(fresh, loadUserNames(List.of(fresh.getAuthorId())), false);
     }
 
     private static final Set<String> ALLOWED_SORT_FIELDS = Set.of("createdAt", "upvotes", "title");

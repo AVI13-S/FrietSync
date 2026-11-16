@@ -14,6 +14,14 @@ public interface ThreadVoteRepository extends JpaRepository<ThreadVote, UUID> {
 
     boolean existsByThreadIdAndUserId(UUID threadId, UUID userId);
 
+    @Modifying
+    @Query(value = "insert into thread_votes (id, thread_id, user_id, created_at, updated_at) "
+            + "values (:id, :threadId, :userId, current_timestamp, current_timestamp) "
+            + "on conflict (thread_id, user_id) do nothing", nativeQuery = true)
+    int insertVoteIfAbsent(@Param("id") UUID id,
+                           @Param("threadId") UUID threadId,
+                           @Param("userId") UUID userId);
+
     @Modifying(flushAutomatically = true)
     @Query("delete from ThreadVote v where v.threadId = :threadId and v.userId = :userId")
     int deleteVote(@Param("threadId") UUID threadId, @Param("userId") UUID userId);

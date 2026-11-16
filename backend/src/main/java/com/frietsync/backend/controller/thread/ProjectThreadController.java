@@ -72,6 +72,13 @@ public class ProjectThreadController {
         return threadService.upvoteThread(projectId, threadId, currentUserId(authentication));
     }
 
+    @DeleteMapping("/{threadId}/upvote")
+    public ThreadSummaryResponse removeUpvote(@PathVariable UUID projectId,
+                                              @PathVariable UUID threadId,
+                                              Authentication authentication) {
+        return threadService.removeUpvote(projectId, threadId, currentUserId(authentication));
+    }
+
     private UUID currentUserId(Authentication authentication) {
         if (authentication != null && authentication.getPrincipal() instanceof UUID userId) {
             return userId;

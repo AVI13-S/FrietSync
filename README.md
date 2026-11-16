@@ -397,7 +397,8 @@ These routes are part of the current controllers and complement the feature tabl
 | GET, POST | `/api/v1/projects/{projectId}/threads` | List or create project discussion threads |
 | GET, DELETE | `/api/v1/projects/{projectId}/threads/{threadId}` | Get or delete a thread |
 | POST | `/api/v1/projects/{projectId}/threads/{threadId}/comments` | Add a comment or nested reply to a thread |
-| POST | `/api/v1/projects/{projectId}/threads/{threadId}/upvote` | Toggle the current user's upvote on a thread |
+| POST | `/api/v1/projects/{projectId}/threads/{threadId}/upvote` | Add the current user's upvote (repeated requests do not add more votes) |
+| DELETE | `/api/v1/projects/{projectId}/threads/{threadId}/upvote` | Remove the current user's upvote |
 | POST, GET | `/api/v1/projects/{projectId}/canvases` | Create or list project canvases |
 | GET, PATCH, DELETE | `/api/v1/canvases/{canvasId}` | Get, rename, or delete a canvas |
 | POST | `/api/v1/projects/{projectId}/calls` | Start a project call; body may specify `type` (`VOICE` by default) |
@@ -465,7 +466,7 @@ Content-Type: application/json
 
 ### Project threads
 
-Threads are project-scoped discussions. Members of an active project can list and create threads, add comments or nested replies (`parentCommentId`), and toggle an upvote. Create a thread with `{"title":"...", "content":"..."}`; add a comment with `{"content":"...", "parentCommentId":null}`. Thread titles are limited to 200 characters, content to 10,000, and comments to 2,000. Listing defaults to 20 newest threads per page; sorting supports `createdAt`, `upvotes`, or `title`. A thread can be deleted by its author, a project admin, or a project manager. Thread creation, comments, deletion, and upvotes require an active project.
+Threads are project-scoped discussions. Members of an active project can list and create threads, add comments or nested replies (`parentCommentId`), and add or remove one upvote per user. Repeating the upvote request is idempotent. Create a thread with `{"title":"...", "content":"..."}`; add a comment with `{"content":"...", "parentCommentId":null}`. Thread titles are limited to 200 characters, content to 10,000, and comments to 2,000. Listing defaults to 20 newest threads per page; sorting supports `createdAt`, `upvotes`, or `title`. A thread can be deleted by its author, a project admin, or a project manager. Thread creation, comments, deletion, and upvotes require an active project.
 
 ### Workspace community and collaborative canvases
 
