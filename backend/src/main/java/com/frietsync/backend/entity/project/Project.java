@@ -35,6 +35,10 @@ public class Project extends BaseEntity {
     @Column(nullable = false)
     private ProjectStatus status = ProjectStatus.PLANNING;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status_before_deletion")
+    private ProjectStatus statusBeforeDeletion;
+
     @Column(name = "start_date")
     private LocalDate startDate;
 

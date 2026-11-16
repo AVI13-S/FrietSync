@@ -161,7 +161,7 @@ public class UserServiceImpl implements UserService {
         Workspace workspace = workspaceRepository.findByIdForUpdate(workspaceId)
                 .orElseThrow(() -> new BadRequestException("Workspace not found"));
 
-        if (workspace.getAdminId().equals(userId)) {
+        if (workspace.getAdminId().equals(userId) && !workspace.isPendingDeletion()) {
             throw new BadRequestException(
                     "Workspace owner must transfer ownership before leaving"
             );
@@ -188,7 +188,7 @@ public class UserServiceImpl implements UserService {
         if (workspaceId != null) {
             Workspace workspace = workspaceRepository.findByIdForUpdate(workspaceId)
                     .orElseThrow(() -> new ResourceNotFoundException("Workspace not found"));
-            if (workspace.getAdminId().equals(userId)) {
+            if (workspace.getAdminId().equals(userId) && !workspace.isPendingDeletion()) {
                 throw new BadRequestException("Workspace admin must transfer ownership before deleting the account");
             } else {
                 replacementId = workspace.getAdminId();

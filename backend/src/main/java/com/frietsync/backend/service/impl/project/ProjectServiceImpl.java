@@ -326,6 +326,7 @@ public class ProjectServiceImpl implements ProjectService {
             throw new ForbiddenException("Only the admin can delete this project");
         }
         if (project.getDeletedAt() == null) {
+            project.setStatusBeforeDeletion(project.getStatus());
             project.setDeletedAt(Instant.now());
             project.setStatus(ProjectStatus.DELETED);
             projectRepository.save(project);
@@ -342,6 +343,12 @@ public class ProjectServiceImpl implements ProjectService {
             throw new ForbiddenException("Only the admin can restore this project");
         }
         if (project.getDeletedAt() != null) {
+            if (project.getStatus() == ProjectStatus.DELETED) {
+                project.setStatus(project.getStatusBeforeDeletion() == null
+                        ? ProjectStatus.ACTIVE
+                        : project.getStatusBeforeDeletion());
+            }
+            project.setStatusBeforeDeletion(null);
             project.setDeletedAt(null);
             projectRepository.save(project);
         }
