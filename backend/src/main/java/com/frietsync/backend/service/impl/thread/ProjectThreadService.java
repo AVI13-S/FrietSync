@@ -161,6 +161,7 @@ public class ProjectThreadService {
     public ThreadSummaryResponse upvoteThread(UUID projectId, UUID threadId, UUID userId) {
         Project project = projectAccess.project(projectId);
         projectAccess.requireMember(project, userId);
+        projectAccess.requireActiveProject(project);
 
         getActiveThread(projectId, threadId);
 
