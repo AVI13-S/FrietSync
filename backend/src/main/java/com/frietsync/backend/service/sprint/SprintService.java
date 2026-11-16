@@ -12,6 +12,7 @@ import java.util.UUID;
 public interface SprintService {
     SprintResponse createSprint(UUID projectId, CreateSprintRequest request, UUID currentUserId);
     List<SprintResponse> listSprints(UUID projectId, UUID currentUserId);
+    List<SprintResponse> listDeletedSprints(UUID projectId, UUID currentUserId);
     List<SprintResponse> listAssignedToMe(UUID currentUserId);
     List<SprintResponse> listSprintsForIssue(UUID issueId, UUID currentUserId);
     SprintResponse getSprint(UUID sprintId, UUID currentUserId);

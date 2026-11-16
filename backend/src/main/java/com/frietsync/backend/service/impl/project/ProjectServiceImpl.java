@@ -164,6 +164,17 @@ public class ProjectServiceImpl implements ProjectService {
         return responses;
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProjectListResponse> deletedProjects(UUID userId) {
+        UUID workspaceId = projectAccess.requireActiveWorkspace(userId);
+        List<ProjectListResponse> responses = new ArrayList<>();
+        for (Project project : projectRepository.findDeletedByAdminIdAndWorkspaceId(userId, workspaceId)) {
+            responses.add(toListResponse(project));
+        }
+        return responses;
+    }
+
     private ProjectListResponse toListResponse(Project project) {
         long totalSprints = sprintRepository.countByProjectIdAndDeletedAtIsNull(project.getId());
         long completedSprints = sprintRepository.countByProjectIdAndStatusAndDeletedAtIsNull(

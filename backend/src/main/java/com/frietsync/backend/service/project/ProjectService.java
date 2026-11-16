@@ -14,6 +14,7 @@ import org.springframework.web.multipart.MultipartFile;
 public interface ProjectService {
     ProjectResponse create(ProjectRequest request, UUID userId);
     List<ProjectListResponse> myProjects(UUID userId);
+    List<ProjectListResponse> deletedProjects(UUID userId);
     ProjectResponse get(UUID projectId, UUID userId);
     ProjectResponse update(UUID projectId, ProjectRequest request, UUID userId);
     ProjectResponse uploadProfilePicture(UUID projectId, MultipartFile profilePicture, UUID userId);

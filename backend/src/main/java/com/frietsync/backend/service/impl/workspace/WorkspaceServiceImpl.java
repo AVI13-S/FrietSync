@@ -153,17 +153,19 @@ public class WorkspaceServiceImpl implements WorkspaceService {
         }
 
         workspace.setDeletionRequestedAt(Instant.now());
-        return toResponse(workspaceRepository.save(workspace));
+        Workspace savedWorkspace = workspaceRepository.save(workspace);
+        User admin = userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        admin.setWorkspaceId(null);
+        userRepository.save(admin);
+        return toResponse(savedWorkspace);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<WorkspaceResponse> getMyDeletedWorkspaces(UUID userId) {
-        User user = userRepository.findById(userId)
+        userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-        if (user.getRole() != Role.ADMIN) {
-            throw new ForbiddenException("Only admins can view deleted workspaces");
-        }
         Instant cutoff = Instant.now().minus(Duration.ofDays(30));
         return workspaceRepository.findAllByAdminIdAndDeletionRequestedAtIsNotNull(userId).stream()
                 .filter(w -> w.getDeletionRequestedAt().plus(Duration.ofDays(30)).isAfter(Instant.now()))
@@ -174,10 +176,10 @@ public class WorkspaceServiceImpl implements WorkspaceService {
     @Override
     @Transactional
     public WorkspaceResponse restoreWorkspace(UUID userId, UUID workspaceId) {
-        User user = userRepository.findByIdForUpdate(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         Workspace workspace = workspaceRepository.findByIdForUpdate(workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Resource not found"));
+        User user = userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         if (!workspace.getAdminId().equals(userId)) {
             throw new ForbiddenException("Only the workspace admin can restore it");
         }
@@ -190,10 +192,11 @@ public class WorkspaceServiceImpl implements WorkspaceService {
         }
 
         if (user.getWorkspaceId() != null && !user.getWorkspaceId().equals(workspaceId)) {
-            user.setWorkspaceId(workspaceId);
-            user.setRole(Role.ADMIN);
-            userRepository.save(user);
-        } else if (user.getWorkspaceId() == null) {
+            throw new BadRequestException(
+                    "Leave your current workspace before restoring this workspace"
+            );
+        }
+        if (user.getWorkspaceId() == null) {
             user.setWorkspaceId(workspaceId);
             user.setRole(Role.ADMIN);
             userRepository.save(user);

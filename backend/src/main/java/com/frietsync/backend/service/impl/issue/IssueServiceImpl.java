@@ -167,6 +167,27 @@ public class IssueServiceImpl implements IssueService {
 
     @Override
     @Transactional(readOnly = true)
+    public IssuePageResponse<IssueResponse> listDeletedForProject(
+            UUID projectId, UUID userId, int page, int size) {
+        Project project = access.project(projectId);
+        Role role = access.requireMember(project, userId);
+        Page<Issue> result;
+        if (role == Role.ADMIN || role == Role.PROJECT_MANAGER || role == Role.TEAM_LEAD) {
+            result = issueRepository.findByProjectIdAndDeletedAtIsNotNull(projectId, pageRequest(page, size));
+        } else if (role == Role.REPORTER) {
+            result = issueRepository.findByProjectIdAndDeletedAtIsNotNullAndCreatedBy(
+                    projectId, userId, pageRequest(page, size));
+        } else {
+            throw new ForbiddenException("You don't have permission to view deleted issues");
+        }
+        return IssuePageResponse.<IssueResponse>builder()
+                .items(mapper.toResponses(result.getContent()))
+                .page(result.getNumber()).size(result.getSize())
+                .totalElements(result.getTotalElements()).totalPages(result.getTotalPages()).build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<IssueResponse> listAssignedToMe(UUID userId) {
         UUID workspaceId = access.requireActiveWorkspace(userId);
         return mapper.toResponses(issueRepository.findAssignedToUserInWorkspace(userId, workspaceId));

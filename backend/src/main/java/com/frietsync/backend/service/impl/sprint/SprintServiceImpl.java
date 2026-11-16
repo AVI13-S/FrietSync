@@ -97,6 +97,18 @@ public class SprintServiceImpl implements SprintService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<SprintResponse> listDeletedSprints(UUID projectId, UUID currentUserId) {
+        requireProjectManager(projectId, currentUserId);
+        List<SprintResponse> responses = new ArrayList<>();
+        for (Sprint sprint : sprintRepository.findByProjectIdAndDeletedAtIsNotNullOrderBySprintNumberDesc(
+                projectId)) {
+            responses.add(toResponse(sprint));
+        }
+        return responses;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<SprintResponse> listAssignedToMe(UUID currentUserId) {
         UUID workspaceId = projectAccess.requireActiveWorkspace(currentUserId);
         List<SprintResponse> responses = new ArrayList<>();

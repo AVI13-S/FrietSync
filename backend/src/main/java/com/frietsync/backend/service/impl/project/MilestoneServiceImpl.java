@@ -69,6 +69,21 @@ public class MilestoneServiceImpl implements MilestoneService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<MilestoneResponse> listDeleted(UUID projectId, UUID userId) {
+        Project project = findProject(projectId);
+        projectAccess.requireActiveProject(project);
+        requireProjectManager(project, userId);
+
+        List<MilestoneResponse> responses = new ArrayList<>();
+        for (Milestone milestone : milestoneRepository.findByProjectIdAndDeletedAtIsNotNullOrderByDueDateAsc(
+                projectId)) {
+            responses.add(toResponse(milestone));
+        }
+        return responses;
+    }
+
+    @Override
     @Transactional
     public MilestoneResponse update(UUID milestoneId, UUID userId, UpdateMilestoneRequest request) {
         Milestone milestone = findMilestone(milestoneId);

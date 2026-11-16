@@ -28,6 +28,11 @@ public interface ProjectRepository extends JpaRepository<Project, UUID> {
 
     List<Project> findByWorkspaceId(UUID workspaceId);
 
+    @Query("select p from Project p where p.deletedAt is not null and p.adminId = :userId "
+            + "and p.workspaceId = :workspaceId order by p.updatedAt desc")
+    List<Project> findDeletedByAdminIdAndWorkspaceId(@Param("userId") UUID userId,
+                                                     @Param("workspaceId") UUID workspaceId);
+
     boolean existsByWorkspaceIdAndStatusNotIn(UUID workspaceId, Collection<ProjectStatus> statuses);
 
     @Modifying

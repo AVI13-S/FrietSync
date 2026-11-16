@@ -164,6 +164,7 @@ The API tables below describe the main routes and feature-specific behavior. For
 | POST | `/api/v1/invites/reject` | Authenticated | `inviteId` |
 | POST | `/api/v1/projects/{projectId}/sprints` | Authenticated | `name, startDate, endDate`, optional `goal` |
 | GET | `/api/v1/projects/{projectId}/sprints` | Authenticated | Lists a project's sprints |
+| GET | `/api/v1/projects/{projectId}/sprints/deleted` | Project admin or project manager | Lists deleted sprints for a project |
 | GET | `/api/v1/sprints/{id}` | Authenticated | Gets a sprint |
 | PATCH | `/api/v1/sprints/{id}` | Authenticated | Optional `name, goal, startDate, endDate` fields |
 | POST | `/api/v1/sprints/{id}/start` | Authenticated | Starts a planned sprint |
@@ -200,6 +201,7 @@ Each member connects their own GitHub account to associate a GitHub login with t
 | GET | `/api/v1/workspaces/{workspaceId}/members` | Authenticated | List workspace members |
 | POST | `/api/v1/projects` | Admin | Create a project |
 | GET | `/api/v1/projects/me` | Authenticated | List the user's projects |
+| GET | `/api/v1/projects/deleted` | Project admin | List deleted projects administered by the current user |
 | GET | `/api/v1/projects/{projectId}` | Authenticated | Get a project, including `githubRepositoryOwner` and `githubRepositoryName` when a GitHub repository is linked (both are `null` otherwise) |
 | PUT | `/api/v1/projects/{projectId}` | Authenticated | Update a project (`multipart/form-data`) |
 | POST | `/api/v1/projects/{projectId}/profile-picture` | Authenticated | Upload a project profile picture (`multipart/form-data`) |
@@ -210,6 +212,7 @@ Each member connects their own GitHub account to associate a GitHub login with t
 | DELETE | `/api/v1/projects/{projectId}/members/{memberUserId}` | Authenticated | Remove a project member |
 | POST | `/api/v1/projects/{projectId}/milestones` | Project admin or project manager | Create a milestone |
 | GET | `/api/v1/projects/{projectId}/milestones` | Project member or project leader | List milestones |
+| GET | `/api/v1/projects/{projectId}/milestones/deleted` | Project admin or project manager | List deleted milestones for a project |
 | PATCH | `/api/v1/milestones/{milestoneId}` | Project admin or project manager | Update a milestone |
 | DELETE | `/api/v1/milestones/{milestoneId}` | Project admin or project manager | Delete a milestone |
 | POST | `/api/v1/projects/{projectId}/releases` | Authenticated | Create a release |
@@ -225,6 +228,7 @@ Each member connects their own GitHub account to associate a GitHub login with t
 |---|---|---|---|
 | POST | `/api/v1/projects/{projectId}/issues` | Authenticated | Create an issue |
 | GET | `/api/v1/projects/{projectId}/issues` | Authenticated | List project issues |
+| GET | `/api/v1/projects/{projectId}/issues/deleted?page=0&size=20` | Project admin, project manager, team lead, or issue creator with reporter role | Paginated deleted issues; reporters only see issues they created |
 | GET | `/api/v1/issues/{issueId}` | Authenticated | Get an issue |
 | PATCH | `/api/v1/issues/{issueId}` | Authenticated | Update an issue |
 | PATCH | `/api/v1/issues/{issueId}/status` | Project admin or project manager | Set the issue status to any `IssueStatus` value |

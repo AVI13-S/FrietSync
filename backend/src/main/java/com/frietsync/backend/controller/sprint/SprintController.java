@@ -41,6 +41,13 @@ public class SprintController {
         return ResponseEntity.ok(sprintService.listSprints(projectId, currentUserId));
     }
 
+    @GetMapping("/projects/{projectId}/sprints/deleted")
+    public ResponseEntity<List<SprintResponse>> listDeletedSprints(
+            @PathVariable UUID projectId,
+            @AuthenticationPrincipal UUID currentUserId) {
+        return ResponseEntity.ok(sprintService.listDeletedSprints(projectId, currentUserId));
+    }
+
     @GetMapping("/sprints/me")
     public ResponseEntity<List<SprintResponse>> listAssignedToMe(
             @AuthenticationPrincipal UUID currentUserId) {

@@ -22,6 +22,11 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
 
     Page<Issue> findByProjectIdAndDeletedAtIsNull(UUID projectId, Pageable pageable);
 
+    Page<Issue> findByProjectIdAndDeletedAtIsNotNull(UUID projectId, Pageable pageable);
+
+    Page<Issue> findByProjectIdAndDeletedAtIsNotNullAndCreatedBy(
+            UUID projectId, UUID createdBy, Pageable pageable);
+
     @Query(value = "select i from Issue i where i.deletedAt is null and i.projectId in "
             + "(select p.id from Project p where p.workspaceId = :workspaceId) and i.id in "
             + "(select a.issueId from IssueAssignee a where a.userId = :userId)",

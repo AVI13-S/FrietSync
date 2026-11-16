@@ -26,6 +26,8 @@ public interface MilestoneService {
 
     List<MilestoneResponse> list(UUID projectId, UUID userId);
 
+    List<MilestoneResponse> listDeleted(UUID projectId, UUID userId);
+
     MilestoneResponse update(UUID milestoneId, UUID userId, UpdateMilestoneRequest request);
 
     void delete(UUID milestoneId, UUID userId);

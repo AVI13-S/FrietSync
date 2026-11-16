@@ -44,6 +44,13 @@ public class MilestoneController {
         return ResponseEntity.ok(milestoneService.list(projectId, userId));
     }
 
+    @GetMapping("/projects/{projectId}/milestones/deleted")
+    public ResponseEntity<List<MilestoneResponse>> listDeleted(
+            @PathVariable UUID projectId,
+            @AuthenticationPrincipal UUID userId) {
+        return ResponseEntity.ok(milestoneService.listDeleted(projectId, userId));
+    }
+
     @PatchMapping("/milestones/{milestoneId}")
     public ResponseEntity<MilestoneResponse> update(
             @PathVariable UUID milestoneId,

@@ -68,6 +68,15 @@ public class IssueController {
         return ResponseEntity.ok(issueService.listForProject(projectId, userId, page, size));
     }
 
+    @GetMapping("/projects/{projectId}/issues/deleted")
+    public ResponseEntity<IssuePageResponse<IssueResponse>> listDeleted(
+            @PathVariable UUID projectId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @AuthenticationPrincipal UUID userId) {
+        return ResponseEntity.ok(issueService.listDeletedForProject(projectId, userId, page, size));
+    }
+
     @GetMapping("/issues/me")
     public ResponseEntity<List<IssueResponse>> assignedToMe(
             @AuthenticationPrincipal UUID userId) {

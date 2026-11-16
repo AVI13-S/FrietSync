@@ -45,6 +45,11 @@ public class ProjectController {
         return ResponseEntity.ok(projectService.myProjects(userId));
     }
 
+    @GetMapping("/deleted")
+    public ResponseEntity<List<ProjectListResponse>> deletedProjects(@AuthenticationPrincipal UUID userId) {
+        return ResponseEntity.ok(projectService.deletedProjects(userId));
+    }
+
     @GetMapping("/{projectId}")
     public ResponseEntity<ProjectResponse> get(@PathVariable UUID projectId,
                                                @AuthenticationPrincipal UUID userId) {
