@@ -1,0 +1,5 @@
+ALTER TABLE project_documents
+    ADD COLUMN IF NOT EXISTS file_key VARCHAR(1000),
+    ADD COLUMN IF NOT EXISTS file_name VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS file_content_type VARCHAR(200),
+    ADD COLUMN IF NOT EXISTS file_size_bytes BIGINT;

@@ -13,6 +13,10 @@ public class DocumentSummaryResponse {
     private UUID id;
     private UUID projectId;
     private String title;
+    private String fileName;
+    private String fileContentType;
+    private Long fileSizeBytes;
+    private String fileDownloadUrl;
     private UUID lastEditedBy;
     private String lastEditedByName;
     private Instant createdAt;

@@ -5,6 +5,7 @@ import com.frietsync.backend.exception.BadRequestException;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 public final class S3UploadValidator {
@@ -33,6 +34,27 @@ public final class S3UploadValidator {
     private static final Set<String> PROFILE_PICTURE_EXTENSIONS =
             Set.of("png", "jpg", "jpeg", "webp");
 
+    private static final Map<String, String> PROJECT_DOCUMENT_CONTENT_TYPES = Map.ofEntries(
+            Map.entry("pdf", "application/pdf"),
+            Map.entry("doc", "application/msword"),
+            Map.entry("docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+            Map.entry("ppt", "application/vnd.ms-powerpoint"),
+            Map.entry("pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+            Map.entry("xls", "application/vnd.ms-excel"),
+            Map.entry("xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+            Map.entry("odt", "application/vnd.oasis.opendocument.text"),
+            Map.entry("ods", "application/vnd.oasis.opendocument.spreadsheet"),
+            Map.entry("odp", "application/vnd.oasis.opendocument.presentation"),
+            Map.entry("rtf", "application/rtf"),
+            Map.entry("txt", "text/plain"),
+            Map.entry("md", "text/markdown"),
+            Map.entry("csv", "text/csv"),
+            Map.entry("html", "text/html"),
+            Map.entry("htm", "text/html"),
+            Map.entry("xml", "application/xml"),
+            Map.entry("epub", "application/epub+zip")
+    );
+
     public static String validateIssueAttachment(
             MultipartFile file, String fileName) {
         return validate(fileName, ISSUE_EXTENSIONS);
@@ -45,6 +67,17 @@ public final class S3UploadValidator {
 
     public static String validateChatAttachment(MultipartFile file, String fileName) {
         return validate(fileName, CHAT_EXTENSIONS);
+    }
+
+    public static String validateProjectDocument(MultipartFile file, String fileName) {
+        if (file == null || file.isEmpty()) {
+            throw new BadRequestException("Document file must not be empty");
+        }
+        if (file.getSize() > 25L * 1024 * 1024) {
+            throw new BadRequestException("Project documents cannot exceed 25 MB");
+        }
+        String extension = validate(fileName, PROJECT_DOCUMENT_CONTENT_TYPES.keySet());
+        return PROJECT_DOCUMENT_CONTENT_TYPES.get(extension);
     }
 
     public static String validateProfilePicture(

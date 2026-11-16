@@ -26,6 +26,18 @@ public class ProjectDocument extends BaseEntity {
     @Column(nullable = false, length = 50000)
     private String content;
 
+    @Column(name = "file_key", length = 1000)
+    private String fileKey;
+
+    @Column(name = "file_name", length = 255)
+    private String fileName;
+
+    @Column(name = "file_content_type", length = 200)
+    private String fileContentType;
+
+    @Column(name = "file_size_bytes")
+    private Long fileSizeBytes;
+
     @Column(name = "created_by", nullable = false, updatable = false)
     private UUID createdBy;
 

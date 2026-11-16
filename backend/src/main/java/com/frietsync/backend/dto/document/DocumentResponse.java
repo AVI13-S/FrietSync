@@ -14,6 +14,10 @@ public class DocumentResponse {
     private UUID projectId;
     private String title;
     private String content;
+    private String fileName;
+    private String fileContentType;
+    private Long fileSizeBytes;
+    private String fileDownloadUrl;
     private UUID createdBy;
     private String createdByName;
     private UUID lastEditedBy;
