@@ -10,10 +10,12 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.UUID;
 
@@ -26,7 +28,7 @@ public class ProjectThreadController {
 
     @GetMapping
     public Page<ThreadSummaryResponse> getThreads(@PathVariable UUID projectId,
-                                                  @PageableDefault(size = 20) Pageable pageable,
+                                                  @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
                                                   Authentication authentication) {
         return threadService.getThreads(projectId, pageable, currentUserId(authentication));
     }
@@ -74,6 +76,6 @@ public class ProjectThreadController {
         if (authentication != null && authentication.getPrincipal() instanceof UUID userId) {
             return userId;
         }
-        throw new IllegalArgumentException("User not authenticated");
+        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated");
     }
 }

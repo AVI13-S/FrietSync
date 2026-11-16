@@ -12,7 +12,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Data
-@EqualsAndHashCode(callSuper = false)
+@EqualsAndHashCode(callSuper = true)
 @Entity
 @Table(name = "thread_comments",
         indexes = @Index(name = "idx_thread_comments_thread", columnList = "thread_id"))
